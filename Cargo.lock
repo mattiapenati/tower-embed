@@ -624,6 +624,7 @@ dependencies = [
  "bytes",
  "http",
  "http-body",
+ "http-body-util",
  "rust-embed",
  "tower-service",
 ]

@@ -6,11 +6,17 @@ use std::{
 };
 
 use bytes::Bytes;
+
 #[doc(no_inline)]
 pub use rust_embed;
 
+#[doc(inline)]
+pub use self::response::ResponseBody;
+
 use rust_embed::RustEmbed;
 use tower_service::Service;
+
+mod response;
 
 /// Service that serves files from embedded assets.
 pub struct ServeEmbed<E: RustEmbed> {
@@ -75,63 +81,6 @@ fn get_file_path_from_uri(uri: &http::Uri) -> Cow<'_, str> {
     }
 }
 
-pub struct ResponseBody {
-    inner: ResponseBodyInner,
-}
-
-enum ResponseBodyInner {
-    Empty,
-    Data(Cow<'static, [u8]>),
-}
-
-impl ResponseBody {
-    fn empty() -> Self {
-        Self {
-            inner: ResponseBodyInner::Empty,
-        }
-    }
-
-    fn data(data: Cow<'static, [u8]>) -> Self {
-        Self {
-            inner: ResponseBodyInner::Data(data),
-        }
-    }
-}
-
-impl http_body::Body for ResponseBody {
-    type Data = bytes::Bytes;
-    type Error = std::convert::Infallible;
-
-    fn poll_frame(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
-        let this = self.get_mut();
-        match std::mem::replace(&mut this.inner, ResponseBodyInner::Empty) {
-            ResponseBodyInner::Data(data) if !data.is_empty() => {
-                this.inner = ResponseBodyInner::Empty;
-                let bytes = match data {
-                    Cow::Borrowed(data) => Bytes::copy_from_slice(data),
-                    Cow::Owned(data) => Bytes::from_owner(data),
-                };
-                let frame = http_body::Frame::data(bytes);
-                Poll::Ready(Some(Ok(frame)))
-            }
-            _ => Poll::Ready(None),
-        }
-    }
-
-    fn size_hint(&self) -> http_body::SizeHint {
-        match &self.inner {
-            ResponseBodyInner::Data(data) => {
-                let len = data.len() as u64;
-                http_body::SizeHint::with_exact(len)
-            }
-            ResponseBodyInner::Empty => http_body::SizeHint::with_exact(0),
-        }
-    }
-}
-
 pub struct ResponseFuture {
     inner: ResponseFutureInner,
 }
@@ -180,7 +129,10 @@ impl Future for ResponseFuture {
             ResponseFutureInner::File { ref mut content } => match content.take() {
                 Some(content) => http::Response::builder()
                     .status(http::StatusCode::OK)
-                    .body(ResponseBody::data(content))
+                    .body(ResponseBody::full(match content {
+                        Cow::Borrowed(bytes) => Bytes::from_static(bytes),
+                        Cow::Owned(bytes) => Bytes::from_owner(bytes),
+                    }))
                     .unwrap(),
                 None => unreachable!(),
             },
