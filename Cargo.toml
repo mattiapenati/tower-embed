@@ -1,0 +1,31 @@
+[workspace]
+members = [".", "examples/*"]
+resolver = "2"
+
+[workspace.package]
+authors = ["Mattia Penati <mattia.penati@protonmail.com>"]
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+
+[workspace.dependencies]
+tower-embed = { path = "." }
+
+[package]
+name = "tower-embed"
+version = "0.1.0"
+description = "Tower service to serve embedded assets"
+keywords = ["tower", "http", "static"]
+homepage = "https://githhub.com/mattiapenati/tower-embed"
+repository = "https://githhub.com/mattiapenati/tower-embed"
+documentation = "https://docs.rs/tower-embed"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+autoexamples = false
+
+[dependencies]
+bytes = "1.11.0"
+http = "1.4.0"
+http-body = "1.0.1"
+rust-embed = "8.11.0"
+tower-service = "0.3.3"

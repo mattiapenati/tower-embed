@@ -1,0 +1,11 @@
+[package]
+name = "example-axum"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+axum = "0.8.8"
+tokio = { version = "1.49.0", features = ["full"] }
+tower-embed.workspace = true
