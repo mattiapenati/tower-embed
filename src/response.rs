@@ -6,6 +6,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use headers::HeaderMapExt;
 use http_body_util::BodyExt;
 
 type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, Infallible>;
@@ -46,19 +47,26 @@ impl http_body::Body for ResponseBody {
     }
 }
 
+/// File information
+pub(crate) struct File {
+    pub content: Cow<'static, [u8]>,
+    pub content_type: headers::ContentType,
+    pub etag: headers::ETag,
+    pub last_modified: Option<headers::LastModified>,
+}
+
 /// Response future of [`ServeEmbed`]
 ///
 /// [`ServeEmbed`]: crate::ServeEmbed
-#[derive(Debug)]
 pub struct ResponseFuture {
     inner: ResponseFutureInner,
 }
 
-#[derive(Debug)]
 enum ResponseFutureInner {
     MethodNotAllowed,
     FileNotFound,
-    File { content: Option<Cow<'static, [u8]>> },
+    NotModified,
+    File(Option<File>),
 }
 
 impl ResponseFuture {
@@ -74,11 +82,15 @@ impl ResponseFuture {
         }
     }
 
-    pub(crate) fn file(content: Cow<'static, [u8]>) -> Self {
+    pub(crate) fn not_modified() -> Self {
         Self {
-            inner: ResponseFutureInner::File {
-                content: Some(content),
-            },
+            inner: ResponseFutureInner::NotModified,
+        }
+    }
+
+    pub(crate) fn file(file: File) -> Self {
+        Self {
+            inner: ResponseFutureInner::File(Some(file)),
         }
     }
 }
@@ -100,14 +112,28 @@ impl Future for ResponseFuture {
                 .status(http::StatusCode::NOT_FOUND)
                 .body(ResponseBody::empty())
                 .unwrap(),
-            ResponseFutureInner::File { ref mut content } => match content.take() {
-                Some(content) => http::Response::builder()
-                    .status(http::StatusCode::OK)
-                    .body(ResponseBody::full(match content {
-                        Cow::Borrowed(bytes) => Bytes::from_static(bytes),
-                        Cow::Owned(bytes) => Bytes::from_owner(bytes),
-                    }))
-                    .unwrap(),
+            ResponseFutureInner::NotModified => http::Response::builder()
+                .status(http::StatusCode::NOT_MODIFIED)
+                .body(ResponseBody::empty())
+                .unwrap(),
+            ResponseFutureInner::File(ref mut file) => match file.take() {
+                Some(file) => {
+                    let mut response = http::Response::builder()
+                        .status(http::StatusCode::OK)
+                        .body(ResponseBody::full(match file.content {
+                            Cow::Borrowed(bytes) => Bytes::from_static(bytes),
+                            Cow::Owned(bytes) => Bytes::from_owner(bytes),
+                        }))
+                        .unwrap();
+
+                    response.headers_mut().typed_insert(file.content_type);
+                    response.headers_mut().typed_insert(file.etag);
+                    if let Some(last_modified) = file.last_modified {
+                        response.headers_mut().typed_insert(last_modified);
+                    }
+
+                    response
+                }
                 None => unreachable!(),
             },
         };
