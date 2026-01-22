@@ -63,34 +63,64 @@ pub struct ResponseFuture {
 }
 
 enum ResponseFutureInner {
-    MethodNotAllowed,
-    FileNotFound,
-    NotModified,
-    File(Option<File>),
+    Ready(Option<http::Response<ResponseBody>>),
 }
 
 impl ResponseFuture {
     pub(crate) fn method_not_allowed() -> Self {
+        let response = http::Response::builder()
+            .header(
+                http::header::ALLOW,
+                http::HeaderValue::from_static("GET, HEAD"),
+            )
+            .status(http::StatusCode::METHOD_NOT_ALLOWED)
+            .body(ResponseBody::empty())
+            .unwrap();
+
         Self {
-            inner: ResponseFutureInner::MethodNotAllowed,
+            inner: ResponseFutureInner::Ready(Some(response)),
         }
     }
 
     pub(crate) fn file_not_found() -> Self {
+        let response = http::Response::builder()
+            .status(http::StatusCode::NOT_FOUND)
+            .body(ResponseBody::empty())
+            .unwrap();
+
         Self {
-            inner: ResponseFutureInner::FileNotFound,
+            inner: ResponseFutureInner::Ready(Some(response)),
         }
     }
 
     pub(crate) fn not_modified() -> Self {
+        let response = http::Response::builder()
+            .status(http::StatusCode::NOT_MODIFIED)
+            .body(ResponseBody::empty())
+            .unwrap();
+
         Self {
-            inner: ResponseFutureInner::NotModified,
+            inner: ResponseFutureInner::Ready(Some(response)),
         }
     }
 
     pub(crate) fn file(file: File) -> Self {
+        let mut response = http::Response::builder()
+            .status(http::StatusCode::OK)
+            .body(ResponseBody::full(match file.content {
+                Cow::Borrowed(bytes) => Bytes::from_static(bytes),
+                Cow::Owned(bytes) => Bytes::from_owner(bytes),
+            }))
+            .unwrap();
+
+        response.headers_mut().typed_insert(file.content_type);
+        response.headers_mut().typed_insert(file.etag);
+        if let Some(last_modified) = file.last_modified {
+            response.headers_mut().typed_insert(last_modified);
+        }
+
         Self {
-            inner: ResponseFutureInner::File(Some(file)),
+            inner: ResponseFutureInner::Ready(Some(response)),
         }
     }
 }
@@ -100,42 +130,9 @@ impl Future for ResponseFuture {
 
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         let response = match self.get_mut().inner {
-            ResponseFutureInner::MethodNotAllowed => http::Response::builder()
-                .header(
-                    http::header::ALLOW,
-                    http::HeaderValue::from_static("GET, HEAD"),
-                )
-                .status(http::StatusCode::METHOD_NOT_ALLOWED)
-                .body(ResponseBody::empty())
-                .unwrap(),
-            ResponseFutureInner::FileNotFound => http::Response::builder()
-                .status(http::StatusCode::NOT_FOUND)
-                .body(ResponseBody::empty())
-                .unwrap(),
-            ResponseFutureInner::NotModified => http::Response::builder()
-                .status(http::StatusCode::NOT_MODIFIED)
-                .body(ResponseBody::empty())
-                .unwrap(),
-            ResponseFutureInner::File(ref mut file) => match file.take() {
-                Some(file) => {
-                    let mut response = http::Response::builder()
-                        .status(http::StatusCode::OK)
-                        .body(ResponseBody::full(match file.content {
-                            Cow::Borrowed(bytes) => Bytes::from_static(bytes),
-                            Cow::Owned(bytes) => Bytes::from_owner(bytes),
-                        }))
-                        .unwrap();
-
-                    response.headers_mut().typed_insert(file.content_type);
-                    response.headers_mut().typed_insert(file.etag);
-                    if let Some(last_modified) = file.last_modified {
-                        response.headers_mut().typed_insert(last_modified);
-                    }
-
-                    response
-                }
-                None => unreachable!(),
-            },
+            ResponseFutureInner::Ready(ref mut response) => response
+                .take()
+                .expect("ResponseFuture polled after completion"),
         };
         Poll::Ready(Ok(response))
     }
