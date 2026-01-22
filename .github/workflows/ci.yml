@@ -1,0 +1,27 @@
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: Cargo check
+        run: cargo check --all
+      - name: Cargo clippy
+        run: cargo clippy --all
+      - name: Cargo nextest
+        run: cargo nextest run --no-tests pass --all
+      - name: Check semver
+        uses: obi1kenobi/cargo-semver-checks-action@v2
