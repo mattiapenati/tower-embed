@@ -5,7 +5,35 @@
 ![Apache 2.0 OR MIT licensed](https://img.shields.io/badge/license-Apache2.0%2FMIT-blue.svg)
 
 This crate provides a [`tower`] service designed to provide embedded static
-assets support for web application.
+assets support for web application. This service includes the following HTTP features:
+
+- Support for GET and HEAD requests
+- Content-Type header generation based on file MIME types
+- ETag header generation and validation
+- Last-Modified header generation and validation
+
+## Example
+
+```rust
+use axum::Router;
+use tower_embed::rust_embed::RustEmbed;
+
+#[derive(RustEmbed)]
+#[folder = "assets"]
+#[crate_path = "tower_embed::rust_embed"]
+struct Assets;
+
+#[tokio::main]
+async fn main() {
+    let assets = tower_embed::ServeEmbed::<Assets>::new();
+    let router = Router::new().fallback_service(assets);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
+        .await
+        .unwrap();
+    axum::serve::serve(listener, router).await.unwrap();
+}
+```
 
 ## License
 

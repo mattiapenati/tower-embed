@@ -1,3 +1,18 @@
+//! This crate provides a [`tower`] service designed to provide embedded static
+//! assets support for web application. This service includes the following HTTP features:
+//!
+//! - Support for GET and HEAD requests
+//! - Content-Type header generation based on file MIME types
+//! - ETag header generation and validation
+//! - Last-Modified header generation and validation
+//!
+//! # Usage
+//!
+//! Please see the [examples] directory for a working example.
+//!
+//! [`tower`]: https://crates.io/crates/tower
+//! [examples]: https://github.com/mattiapenati/tower-embed/tree/main/examples
+
 use std::{
     borrow::Cow,
     marker::PhantomData,

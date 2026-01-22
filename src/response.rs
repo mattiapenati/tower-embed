@@ -17,12 +17,12 @@ pub struct ResponseBody(BoxBody);
 
 impl ResponseBody {
     /// Create an empty response body.
-    pub fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         ResponseBody(http_body_util::Empty::new().boxed_unsync())
     }
 
     /// Create a new response body that contains a single chunk
-    pub fn full(data: Bytes) -> Self {
+    pub(crate) fn full(data: Bytes) -> Self {
         ResponseBody(http_body_util::Full::new(data).boxed_unsync())
     }
 }
