@@ -1,17 +1,14 @@
 use std::{
     borrow::Cow,
     marker::PhantomData,
-    pin::Pin,
     task::{Context, Poll},
 };
-
-use bytes::Bytes;
 
 #[doc(no_inline)]
 pub use rust_embed;
 
 #[doc(inline)]
-pub use self::response::ResponseBody;
+pub use self::response::{ResponseBody, ResponseFuture};
 
 use rust_embed::RustEmbed;
 use tower_service::Service;
@@ -78,65 +75,5 @@ fn get_file_path_from_uri(uri: &http::Uri) -> Cow<'_, str> {
         Cow::Owned(format!("{}index.html", path.trim_start_matches('/')))
     } else {
         Cow::Borrowed(path.trim_start_matches('/'))
-    }
-}
-
-pub struct ResponseFuture {
-    inner: ResponseFutureInner,
-}
-
-impl ResponseFuture {
-    fn method_not_allowed() -> Self {
-        Self {
-            inner: ResponseFutureInner::MethodNotAllowed,
-        }
-    }
-
-    fn file_not_found() -> Self {
-        Self {
-            inner: ResponseFutureInner::FileNotFound,
-        }
-    }
-
-    fn file(content: Cow<'static, [u8]>) -> Self {
-        Self {
-            inner: ResponseFutureInner::File {
-                content: Some(content),
-            },
-        }
-    }
-}
-
-enum ResponseFutureInner {
-    MethodNotAllowed,
-    FileNotFound,
-    File { content: Option<Cow<'static, [u8]>> },
-}
-
-impl Future for ResponseFuture {
-    type Output = Result<http::Response<ResponseBody>, std::convert::Infallible>;
-
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let response = match self.get_mut().inner {
-            ResponseFutureInner::MethodNotAllowed => http::Response::builder()
-                .status(http::StatusCode::METHOD_NOT_ALLOWED)
-                .body(ResponseBody::empty())
-                .unwrap(),
-            ResponseFutureInner::FileNotFound => http::Response::builder()
-                .status(http::StatusCode::NOT_FOUND)
-                .body(ResponseBody::empty())
-                .unwrap(),
-            ResponseFutureInner::File { ref mut content } => match content.take() {
-                Some(content) => http::Response::builder()
-                    .status(http::StatusCode::OK)
-                    .body(ResponseBody::full(match content {
-                        Cow::Borrowed(bytes) => Bytes::from_static(bytes),
-                        Cow::Owned(bytes) => Bytes::from_owner(bytes),
-                    }))
-                    .unwrap(),
-                None => unreachable!(),
-            },
-        };
-        Poll::Ready(Ok(response))
     }
 }

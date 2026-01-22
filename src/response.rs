@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     convert::Infallible,
     pin::Pin,
     task::{Context, Poll},
@@ -10,6 +11,7 @@ use http_body_util::BodyExt;
 type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, Infallible>;
 
 /// The body used in crate responses.
+#[derive(Debug)]
 pub struct ResponseBody(BoxBody);
 
 impl ResponseBody {
@@ -41,5 +43,74 @@ impl http_body::Body for ResponseBody {
 
     fn size_hint(&self) -> http_body::SizeHint {
         self.0.size_hint()
+    }
+}
+
+/// Response future of [`ServeEmbed`]
+///
+/// [`ServeEmbed`]: crate::ServeEmbed
+#[derive(Debug)]
+pub struct ResponseFuture {
+    inner: ResponseFutureInner,
+}
+
+#[derive(Debug)]
+enum ResponseFutureInner {
+    MethodNotAllowed,
+    FileNotFound,
+    File { content: Option<Cow<'static, [u8]>> },
+}
+
+impl ResponseFuture {
+    pub(crate) fn method_not_allowed() -> Self {
+        Self {
+            inner: ResponseFutureInner::MethodNotAllowed,
+        }
+    }
+
+    pub(crate) fn file_not_found() -> Self {
+        Self {
+            inner: ResponseFutureInner::FileNotFound,
+        }
+    }
+
+    pub(crate) fn file(content: Cow<'static, [u8]>) -> Self {
+        Self {
+            inner: ResponseFutureInner::File {
+                content: Some(content),
+            },
+        }
+    }
+}
+
+impl Future for ResponseFuture {
+    type Output = Result<http::Response<ResponseBody>, std::convert::Infallible>;
+
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let response = match self.get_mut().inner {
+            ResponseFutureInner::MethodNotAllowed => http::Response::builder()
+                .header(
+                    http::header::ALLOW,
+                    http::HeaderValue::from_static("GET, HEAD"),
+                )
+                .status(http::StatusCode::METHOD_NOT_ALLOWED)
+                .body(ResponseBody::empty())
+                .unwrap(),
+            ResponseFutureInner::FileNotFound => http::Response::builder()
+                .status(http::StatusCode::NOT_FOUND)
+                .body(ResponseBody::empty())
+                .unwrap(),
+            ResponseFutureInner::File { ref mut content } => match content.take() {
+                Some(content) => http::Response::builder()
+                    .status(http::StatusCode::OK)
+                    .body(ResponseBody::full(match content {
+                        Cow::Borrowed(bytes) => Bytes::from_static(bytes),
+                        Cow::Owned(bytes) => Bytes::from_owner(bytes),
+                    }))
+                    .unwrap(),
+                None => unreachable!(),
+            },
+        };
+        Poll::Ready(Ok(response))
     }
 }
