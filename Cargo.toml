@@ -11,7 +11,7 @@ tower-embed = { path = "." }
 
 [package]
 name = "tower-embed"
-version = "0.1.0"
+version = "0.2.0"
 description = "Tower service to serve embedded assets"
 keywords = ["tower", "http", "static"]
 homepage = "https://github.com/mattiapenati/tower-embed"
