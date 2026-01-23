@@ -6,8 +6,9 @@ use std::{
 };
 
 use bytes::Bytes;
-use headers::HeaderMapExt;
 use http_body_util::BodyExt;
+
+use crate::headers::{self, HeaderMapExt};
 
 type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, Infallible>;
 

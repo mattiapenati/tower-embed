@@ -16,21 +16,21 @@
 use std::{
     borrow::Cow,
     marker::PhantomData,
-    str::FromStr,
     task::{Context, Poll},
 };
-
-use headers::HeaderMapExt;
 
 #[doc(no_inline)]
 pub use rust_embed;
 
-#[doc(inline)]
-pub use self::response::{ResponseBody, ResponseFuture};
-
 use rust_embed::RustEmbed;
 use tower_service::Service;
 
+use self::headers::HeaderMapExt;
+
+#[doc(inline)]
+pub use self::response::{ResponseBody, ResponseFuture};
+
+mod headers;
 mod response;
 
 /// Service that serves files from embedded assets.
@@ -90,7 +90,7 @@ where
 
         // Make the request conditional if an If-None-Match header is present
         if let Some(if_none_match) = req.headers().typed_get::<headers::IfNoneMatch>()
-            && !if_none_match.precondition_passes(&etag)
+            && !if_none_match.condition_passes(&etag)
         {
             return ResponseFuture::not_modified();
         }
@@ -98,7 +98,7 @@ where
         // Make the request conditional if an If-Modified-Since header is present
         if let Some(if_modified_since) = req.headers().typed_get::<headers::IfModifiedSince>()
             && let Some(last_modified) = last_modified
-            && !if_modified_since.is_modified(last_modified.into())
+            && !if_modified_since.condition_passes(&last_modified)
         {
             return ResponseFuture::not_modified();
         }
@@ -134,25 +134,21 @@ trait MetadataExt {
 
 impl MetadataExt for rust_embed::Metadata {
     fn etag_header(&self) -> headers::ETag {
-        let bytes = self
+        let etag = self
             .sha256_hash()
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect::<String>();
-        let etag = format!("\"{bytes}\"");
-        headers::ETag::from_str(&etag).unwrap()
+        headers::ETag::new(&etag).unwrap()
     }
 
     fn content_type_header(&self) -> headers::ContentType {
         headers::ContentType::from_str(self.mimetype())
-            .unwrap_or_else(|_| headers::ContentType::octet_stream())
+            .unwrap_or_else(headers::ContentType::octet_stream)
     }
 
     fn last_modified_header(&self) -> Option<headers::LastModified> {
         let unix_timestamp = self.last_modified()?;
-        let system_time = std::time::SystemTime::UNIX_EPOCH
-            .checked_add(std::time::Duration::from_secs(unix_timestamp))?;
-
-        Some(headers::LastModified::from(system_time))
+        headers::LastModified::from_unix_timestamp(unix_timestamp)
     }
 }
