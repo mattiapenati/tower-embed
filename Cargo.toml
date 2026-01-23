@@ -1,6 +1,5 @@
 [workspace]
 members = [".", "examples/*"]
-resolver = "2"
 
 [workspace.package]
 authors = ["Mattia Penati <mattia.penati@protonmail.com>"]
