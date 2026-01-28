@@ -1,9 +1,7 @@
 use axum::Router;
-use tower_embed::rust_embed::RustEmbed;
 
-#[derive(RustEmbed)]
-#[folder = "assets"]
-#[crate_path = "tower_embed::rust_embed"]
+#[derive(tower_embed::Embed)]
+#[embed(folder = "assets")]
 struct Assets;
 
 #[tokio::main]
