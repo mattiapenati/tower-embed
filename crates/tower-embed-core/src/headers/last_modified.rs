@@ -1,8 +1,8 @@
 use std::time::{Duration, SystemTime};
 
 /// `Last-Modified` header.
-#[derive(Clone, Copy)]
-pub struct LastModified(pub(crate) SystemTime);
+#[derive(Clone, Copy, Debug)]
+pub struct LastModified(pub SystemTime);
 
 impl LastModified {
     /// Creates a new [`LastModified`] from a UNIX timestamp.

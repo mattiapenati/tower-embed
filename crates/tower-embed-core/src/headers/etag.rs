@@ -1,4 +1,5 @@
 /// `ETag` header.
+#[derive(Clone, Debug)]
 pub struct ETag(http::HeaderValue);
 
 impl ETag {
@@ -31,9 +32,8 @@ impl ETag {
         Some(Self(http::HeaderValue::from_str(&value).unwrap()))
     }
 
-    #[cfg(test)]
     /// Creates a weak [`ETag`] from a string value.
-    pub(crate) fn weak(value: &str) -> Option<Self> {
+    pub fn weak(value: &str) -> Option<Self> {
         if !value.is_ascii() {
             return None;
         }
@@ -49,7 +49,7 @@ impl ETag {
     }
 
     /// Returns the entity tag value.
-    pub fn entity_tag(&self) -> &str {
+    pub fn value(&self) -> &str {
         let bytes = self.0.as_bytes();
         let etag_value = if self.is_weak() { &bytes[2..] } else { bytes };
 
@@ -61,7 +61,7 @@ impl ETag {
 
     /// Weak comparison of two ETags.
     pub(crate) fn weak_eq(&self, value: &[u8]) -> bool {
-        self.entity_tag().as_bytes() == value
+        self.value().as_bytes() == value
     }
 }
 

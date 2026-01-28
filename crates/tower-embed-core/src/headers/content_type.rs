@@ -1,15 +1,11 @@
 /// `Content-Type` header.
-pub struct ContentType(mime::Mime);
+#[derive(Clone, Debug)]
+pub struct ContentType(pub mime::Mime);
 
 impl ContentType {
     /// Create a `Content-Type` header for `application/octet-stream`.
-    pub fn octet_stream() -> Self {
+    pub const fn octet_stream() -> Self {
         ContentType(mime::APPLICATION_OCTET_STREAM)
-    }
-
-    pub fn from_str(mime: &str) -> Option<Self> {
-        let mime_type = mime.parse().ok()?;
-        Some(ContentType(mime_type))
     }
 }
 

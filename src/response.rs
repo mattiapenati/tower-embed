@@ -7,8 +7,9 @@ use std::{
 
 use bytes::Bytes;
 use http_body_util::BodyExt;
+use tower_embed_core::{Embedded, Metadata};
 
-use crate::headers::{self, HeaderMapExt};
+use crate::headers::HeaderMapExt;
 
 type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, Infallible>;
 
@@ -46,14 +47,6 @@ impl http_body::Body for ResponseBody {
     fn size_hint(&self) -> http_body::SizeHint {
         self.0.size_hint()
     }
-}
-
-/// File information
-pub(crate) struct File {
-    pub content: Cow<'static, [u8]>,
-    pub content_type: headers::ContentType,
-    pub etag: headers::ETag,
-    pub last_modified: Option<headers::LastModified>,
 }
 
 /// Response future of [`ServeEmbed`]
@@ -105,18 +98,35 @@ impl ResponseFuture {
         }
     }
 
-    pub(crate) fn file(file: File) -> Self {
+    pub(crate) fn internal_server_error() -> Self {
+        let response = http::Response::builder()
+            .status(http::StatusCode::INTERNAL_SERVER_ERROR)
+            .body(ResponseBody::empty())
+            .unwrap();
+
+        Self {
+            inner: ResponseFutureInner::Ready(Some(response)),
+        }
+    }
+
+    pub(crate) fn file(embedded: Embedded) -> Self {
         let mut response = http::Response::builder()
             .status(http::StatusCode::OK)
-            .body(ResponseBody::full(match file.content {
+            .body(ResponseBody::full(match embedded.content {
                 Cow::Borrowed(bytes) => Bytes::from_static(bytes),
                 Cow::Owned(bytes) => Bytes::from_owner(bytes),
             }))
             .unwrap();
 
-        response.headers_mut().typed_insert(file.content_type);
-        response.headers_mut().typed_insert(file.etag);
-        if let Some(last_modified) = file.last_modified {
+        let Metadata {
+            content_type,
+            etag,
+            last_modified,
+        } = embedded.metadata;
+
+        response.headers_mut().typed_insert(content_type);
+        response.headers_mut().typed_insert(etag);
+        if let Some(last_modified) = last_modified {
             response.headers_mut().typed_insert(last_modified);
         }
 
