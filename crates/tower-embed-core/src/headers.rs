@@ -1,3 +1,7 @@
+//! Typed HTTP headers to be used with [`http`] crate.
+//!
+//! [`http`]: https://docs.rs/http
+
 pub use self::{
     content_type::ContentType, etag::ETag, if_modified_since::IfModifiedSince,
     if_none_match::IfNoneMatch, last_modified::LastModified,

@@ -1,0 +1,17 @@
+[package]
+name = "tower-embed-core"
+description = "Core functionalities of tower-embed"
+version = "0.1.0"
+documentation = "https://docs.rs/tower-embed-core"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+http = "1.4.0"
+httpdate = "1.0.3"
+mime = "0.3.17"
+mime_guess = "2.0.5"
+sha2 = "0.10.9"

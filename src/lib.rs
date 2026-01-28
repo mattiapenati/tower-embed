@@ -19,34 +19,34 @@ use std::{
     task::{Context, Poll},
 };
 
-#[doc(no_inline)]
-pub use rust_embed;
+#[doc(hidden)]
+pub use tower_embed_core;
 
-use rust_embed::RustEmbed;
-use tower_service::Service;
+#[doc(inline)]
+pub use tower_embed_impl::Embed;
 
-use self::headers::HeaderMapExt;
+#[doc(inline)]
+pub use tower_embed_core::{Embed, Embedded, Metadata, headers};
 
 #[doc(inline)]
 pub use self::response::{ResponseBody, ResponseFuture};
 
-mod headers;
 mod response;
 
 /// Service that serves files from embedded assets.
-pub struct ServeEmbed<E: RustEmbed> {
+pub struct ServeEmbed<E: Embed> {
     _embed: PhantomData<E>,
 }
 
-impl<E: RustEmbed> Clone for ServeEmbed<E> {
+impl<E: Embed> Clone for ServeEmbed<E> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<E: RustEmbed> Copy for ServeEmbed<E> {}
+impl<E: Embed> Copy for ServeEmbed<E> {}
 
-impl<E: RustEmbed> ServeEmbed<E> {
+impl<E: Embed> ServeEmbed<E> {
     /// Create a new [`ServeEmbed`] service.
     pub fn new() -> Self {
         Self {
@@ -55,15 +55,15 @@ impl<E: RustEmbed> ServeEmbed<E> {
     }
 }
 
-impl<E: RustEmbed> Default for ServeEmbed<E> {
+impl<E: Embed> Default for ServeEmbed<E> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<E, ReqBody> Service<http::Request<ReqBody>> for ServeEmbed<E>
+impl<E, ReqBody> tower_service::Service<http::Request<ReqBody>> for ServeEmbed<E>
 where
-    E: RustEmbed,
+    E: Embed,
 {
     type Response = http::Response<ResponseBody>;
     type Error = std::convert::Infallible;
@@ -74,41 +74,39 @@ where
     }
 
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
+        use self::headers::HeaderMapExt;
+
         if req.method() != http::Method::GET && req.method() != http::Method::HEAD {
             return ResponseFuture::method_not_allowed();
         }
 
         let path = get_file_path_from_uri(req.uri());
-        let Some(file) = E::get(path.as_ref()) else {
-            return ResponseFuture::file_not_found();
+        let embedded = match E::get(path.as_ref()) {
+            Err(ref err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return ResponseFuture::file_not_found();
+            }
+            Err(_) => {
+                return ResponseFuture::internal_server_error();
+            }
+            Ok(embedded) => embedded,
         };
-
-        // Get response headers
-        let content_type = file.metadata.content_type_header();
-        let etag = file.metadata.etag_header();
-        let last_modified = file.metadata.last_modified_header();
 
         // Make the request conditional if an If-None-Match header is present
         if let Some(if_none_match) = req.headers().typed_get::<headers::IfNoneMatch>()
-            && !if_none_match.condition_passes(&etag)
+            && !if_none_match.condition_passes(&embedded.metadata.etag)
         {
             return ResponseFuture::not_modified();
         }
 
         // Make the request conditional if an If-Modified-Since header is present
         if let Some(if_modified_since) = req.headers().typed_get::<headers::IfModifiedSince>()
-            && let Some(last_modified) = last_modified
+            && let Some(last_modified) = embedded.metadata.last_modified
             && !if_modified_since.condition_passes(&last_modified)
         {
             return ResponseFuture::not_modified();
         }
 
-        ResponseFuture::file(response::File {
-            content: file.data.clone(),
-            content_type,
-            etag,
-            last_modified,
-        })
+        ResponseFuture::file(embedded)
     }
 }
 
@@ -118,37 +116,5 @@ fn get_file_path_from_uri(uri: &http::Uri) -> Cow<'_, str> {
         Cow::Owned(format!("{}index.html", path.trim_start_matches('/')))
     } else {
         Cow::Borrowed(path.trim_start_matches('/'))
-    }
-}
-
-trait MetadataExt {
-    /// Compute the ETag for the asset.
-    fn etag_header(&self) -> headers::ETag;
-
-    /// Returns the content type of the asset.
-    fn content_type_header(&self) -> headers::ContentType;
-
-    /// Return the last modified time formatted as an HTTP date.
-    fn last_modified_header(&self) -> Option<headers::LastModified>;
-}
-
-impl MetadataExt for rust_embed::Metadata {
-    fn etag_header(&self) -> headers::ETag {
-        let etag = self
-            .sha256_hash()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>();
-        headers::ETag::new(&etag).unwrap()
-    }
-
-    fn content_type_header(&self) -> headers::ContentType {
-        headers::ContentType::from_str(self.mimetype())
-            .unwrap_or_else(headers::ContentType::octet_stream)
-    }
-
-    fn last_modified_header(&self) -> Option<headers::LastModified> {
-        let unix_timestamp = self.last_modified()?;
-        headers::LastModified::from_unix_timestamp(unix_timestamp)
     }
 }
