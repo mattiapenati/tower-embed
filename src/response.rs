@@ -1,17 +1,17 @@
 use std::{
-    borrow::Cow,
-    convert::Infallible,
     pin::Pin,
     task::{Context, Poll},
 };
 
 use bytes::Bytes;
+use futures_core::Stream;
+use http_body::{Body, Frame};
 use http_body_util::BodyExt;
-use tower_embed_core::{Embedded, Metadata};
+use tower_embed_core::{BoxError, Embedded, Metadata};
 
-use crate::headers::HeaderMapExt;
+use crate::core::headers::HeaderMapExt;
 
-type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, Infallible>;
+type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, BoxError>;
 
 /// The body used in crate responses.
 #[derive(Debug)]
@@ -19,19 +19,36 @@ pub struct ResponseBody(BoxBody);
 
 impl ResponseBody {
     /// Create an empty response body.
-    pub(crate) fn empty() -> Self {
-        ResponseBody(http_body_util::Empty::new().boxed_unsync())
+    pub fn empty() -> Self {
+        ResponseBody::new(http_body_util::Empty::new())
     }
 
     /// Create a new response body that contains a single chunk
-    pub(crate) fn full(data: Bytes) -> Self {
-        ResponseBody(http_body_util::Full::new(data).boxed_unsync())
+    pub fn full(data: Bytes) -> Self {
+        ResponseBody::new(http_body_util::Full::new(data))
+    }
+
+    /// Create a response body from a stream of bytes.
+    pub fn stream<S, E>(stream: S) -> Self
+    where
+        S: Stream<Item = Result<Frame<Bytes>, E>> + Send + 'static,
+        E: Into<BoxError>,
+    {
+        ResponseBody::new(http_body_util::StreamBody::new(stream))
+    }
+
+    fn new<B>(body: B) -> Self
+    where
+        B: Body<Data = Bytes> + Send + 'static,
+        B::Error: Into<BoxError>,
+    {
+        ResponseBody(body.map_err(|err| err.into()).boxed_unsync())
     }
 }
 
 impl http_body::Body for ResponseBody {
     type Data = Bytes;
-    type Error = Infallible;
+    type Error = BoxError;
 
     fn poll_frame(
         mut self: Pin<&mut Self>,
@@ -112,10 +129,7 @@ impl ResponseFuture {
     pub(crate) fn file(embedded: Embedded) -> Self {
         let mut response = http::Response::builder()
             .status(http::StatusCode::OK)
-            .body(ResponseBody::full(match embedded.content {
-                Cow::Borrowed(bytes) => Bytes::from_static(bytes),
-                Cow::Owned(bytes) => Bytes::from_owner(bytes),
-            }))
+            .body(ResponseBody::stream(embedded.content))
             .unwrap();
 
         let Metadata {

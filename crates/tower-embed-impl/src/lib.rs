@@ -41,27 +41,24 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
         let absolute_path = file.absolute_path.as_str();
 
         quote::quote! {{
-            let content = include_bytes!(#absolute_path);
+            let content = include_bytes!(#absolute_path).as_slice();
             let metadata = Metadata {
-                content_type: #crate_path::tower_embed_core::content_type(Path::new(#relative_path)),
-                etag: #crate_path::tower_embed_core::etag(content),
+                content_type: #crate_path::core::content_type(Path::new(#relative_path)),
+                etag: #crate_path::core::etag(content),
                 last_modified: #last_modified,
             };
-            (#relative_path, #crate_path::tower_embed_core::Embedded {
-                content: std::borrow::Cow::Borrowed(content),
-                metadata,
-            })
+            (#relative_path, (content, metadata))
         }}
     });
 
     let expanded = quote::quote! {
         impl #crate_path::Embed for #ident {
-            fn get(path: &str) -> std::io::Result<#crate_path::Embedded> {
+            fn get(path: &str) -> std::io::Result<#crate_path::core::Embedded> {
                 use std::{collections::HashMap, sync::LazyLock, path::Path};
 
-                use #crate_path::tower_embed_core::{Embedded, Metadata, headers};
+                use #crate_path::core::{Content, Embedded, Metadata, headers};
 
-                const FILES: LazyLock<HashMap<&'static str, Embedded>> = LazyLock::new(|| {
+                const FILES: LazyLock<HashMap<&'static str, (&'static [u8], Metadata)>> = LazyLock::new(|| {
                     let mut m = HashMap::new();
                     #({
                         let (key, value) = #embedded_files;
@@ -71,7 +68,10 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
                 });
 
                 match FILES.get(path) {
-                    Some(embedded) => Ok(embedded.clone()),
+                    Some((bytes, metadata)) => Ok(Embedded {
+                        content: Content::from_static(bytes),
+                        metadata: metadata.clone(),
+                    }),
                     None => Err(std::io::ErrorKind::NotFound.into()),
                 }
             }
