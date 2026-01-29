@@ -101,7 +101,7 @@ pub struct Metadata {
     /// MIME type of the resource.
     pub content_type: headers::ContentType,
     /// File unique identifier, to be used to match with `If-None-Match` header.
-    pub etag: headers::ETag,
+    pub etag: Option<headers::ETag>,
     /// The date and time when the resource was modified.
     pub last_modified: Option<headers::LastModified>,
 }

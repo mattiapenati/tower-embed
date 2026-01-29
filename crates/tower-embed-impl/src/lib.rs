@@ -44,7 +44,7 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
             let content = include_bytes!(#absolute_path).as_slice();
             let metadata = Metadata {
                 content_type: #crate_path::core::content_type(Path::new(#relative_path)),
-                etag: #crate_path::core::etag(content),
+                etag: Some(#crate_path::core::etag(content)),
                 last_modified: #last_modified,
             };
             (#relative_path, (content, metadata))
