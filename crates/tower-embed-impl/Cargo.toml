@@ -1,7 +1,8 @@
 [package]
 name = "tower-embed-impl"
 description = "Implementation of macros for tower-embed"
-version = "0.1.0"
+documentation = "https://docs.rs/tower-embed-impl"
+version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,5 +15,5 @@ camino = "1.2.2"
 proc-macro2 = "1.0.106"
 quote = "1.0.44"
 syn = "2.0.114"
-tower-embed-core.workspace = true
+tower-embed-core = { path = "../tower-embed-core", version = "0.3.0" }
 walkdir = "2.5.0"

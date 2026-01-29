@@ -1,8 +1,8 @@
 [package]
 name = "tower-embed-core"
 description = "Core functionalities of tower-embed"
-version = "0.1.0"
 documentation = "https://docs.rs/tower-embed-core"
+version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
