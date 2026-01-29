@@ -607,6 +607,7 @@ name = "tower-embed"
 version = "0.2.0"
 dependencies = [
  "bytes",
+ "futures-core",
  "http",
  "http-body",
  "http-body-util",
@@ -619,7 +620,10 @@ dependencies = [
 name = "tower-embed-core"
 version = "0.1.0"
 dependencies = [
+ "bytes",
+ "futures-core",
  "http",
+ "http-body",
  "httpdate",
  "mime",
  "mime_guess",

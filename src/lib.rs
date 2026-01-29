@@ -19,14 +19,14 @@ use std::{
     task::{Context, Poll},
 };
 
-#[doc(hidden)]
-pub use tower_embed_core;
-
 #[doc(inline)]
 pub use tower_embed_impl::Embed;
 
 #[doc(inline)]
-pub use tower_embed_core::{Embed, Embedded, Metadata, headers};
+pub use tower_embed_core as core;
+
+#[doc(inline)]
+pub use tower_embed_core::Embed;
 
 #[doc(inline)]
 pub use self::response::{ResponseBody, ResponseFuture};
@@ -74,7 +74,7 @@ where
     }
 
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
-        use self::headers::HeaderMapExt;
+        use core::headers::{self, HeaderMapExt};
 
         if req.method() != http::Method::GET && req.method() != http::Method::HEAD {
             return ResponseFuture::method_not_allowed();

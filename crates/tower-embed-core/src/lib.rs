@@ -1,6 +1,14 @@
 //! Core functionalities of tower-embed.
 
-use std::borrow::Cow;
+use std::{
+    error::Error,
+    pin::Pin,
+    task::{Context, Poll, ready},
+};
+
+use bytes::Bytes;
+use futures_core::{Stream, stream::BoxStream};
+use http_body::Frame;
 
 pub mod headers;
 
@@ -11,30 +19,79 @@ pub trait Embed {
 }
 
 /// An embedded binary asset.
-#[derive(Clone)]
 pub struct Embedded {
     /// The content of the embedded asset.
-    pub content: Cow<'static, [u8]>,
+    pub content: Content,
     /// The metadata associated with the embedded asset.
     pub metadata: Metadata,
 }
 
-impl Embedded {
-    pub fn read(path: &std::path::Path) -> std::io::Result<Self> {
-        let content = std::fs::read(path)?;
+/// Type-erased error type.
+pub type BoxError = Box<dyn Error + Send + Sync>;
 
-        let content_type = content_type(path);
-        let etag = etag(&content);
-        let last_modified = Some(last_modified(path)?);
+/// A stream of binary content.
+pub struct Content(BoxStream<'static, Result<Frame<Bytes>, BoxError>>);
 
-        Ok(Self {
-            content: Cow::Owned(content),
-            metadata: Metadata {
-                content_type,
-                etag,
-                last_modified,
-            },
-        })
+impl Content {
+    /// Creates a [`Content`] from a static slice of bytes.
+    pub fn from_static(bytes: &'static [u8]) -> Self {
+        Self(Box::pin(StaticContent::new(bytes)))
+    }
+
+    /// Creates a [`Content`] from a stream of frames.
+    pub fn from_stream<S, E>(stream: S) -> Self
+    where
+        S: Stream<Item = Result<Frame<Bytes>, E>> + Send + 'static,
+        E: Into<BoxError>,
+    {
+        Self(Box::pin(StreamContent(stream)))
+    }
+}
+
+impl Stream for Content {
+    type Item = Result<Frame<Bytes>, BoxError>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.0.as_mut().poll_next(cx)
+    }
+}
+
+struct StaticContent(Option<&'static [u8]>);
+
+impl StaticContent {
+    pub fn new(bytes: &'static [u8]) -> Self {
+        Self(Some(bytes))
+    }
+}
+
+impl Stream for StaticContent {
+    type Item = Result<Frame<Bytes>, BoxError>;
+
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.0
+            .take()
+            .map(|bytes| Ok(Frame::data(Bytes::from_static(bytes))))
+            .into()
+    }
+}
+
+struct StreamContent<S>(S);
+
+impl<S, E> Stream for StreamContent<S>
+where
+    S: Stream<Item = Result<Frame<Bytes>, E>>,
+    E: Into<BoxError>,
+{
+    type Item = Result<Frame<Bytes>, BoxError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let inner = unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().0) };
+        match ready!(inner.poll_next(cx)) {
+            Some(Ok(frame)) => Some(Ok(frame)),
+            Some(Err(err)) => Some(Err(err.into())),
+            None => None,
+        }
+        .into()
     }
 }
 
