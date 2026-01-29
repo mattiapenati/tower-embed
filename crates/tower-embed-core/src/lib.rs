@@ -15,7 +15,7 @@ pub mod headers;
 /// A trait used to access to binary assets in a directory.
 pub trait Embed {
     /// Get an embedded asset by its path.
-    fn get(path: &str) -> std::io::Result<Embedded>;
+    fn get(path: &str) -> impl Future<Output = std::io::Result<Embedded>> + Send + 'static;
 }
 
 /// An embedded binary asset.

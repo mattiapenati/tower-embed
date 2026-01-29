@@ -3,6 +3,7 @@
 - replace [`rust-embed`] with custom asset embedding solution
 - enable support to streaming in response body
 - replace [`sha2`] with [`rapidhash`]
+- serve assets directly from filesystem in debug mode
 
 ## v0.2.0
 
