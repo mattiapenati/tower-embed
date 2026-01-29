@@ -123,14 +123,14 @@ pub fn content_type(path: &std::path::Path) -> headers::ContentType {
 
 /// Returns the unique identifier tag of the content.
 pub fn etag(content: &[u8]) -> headers::ETag {
-    let hash: [u8; 32] = {
-        use sha2::Digest;
+    use std::hash::Hasher;
 
-        let mut hasher = sha2::Sha256::new();
-        hasher.update(content);
-        hasher.finalize().into()
+    let hash: u64 = {
+        let mut hasher = rapidhash::fast::RapidHasher::default_const();
+        hasher.write(content);
+        hasher.finish()
     };
 
-    let etag = hash.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let etag = format!("{:016x}", hash);
     headers::ETag::new(&etag).unwrap()
 }
