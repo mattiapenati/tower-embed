@@ -15,7 +15,7 @@ tower-embed-impl = { path = "crates/tower-embed-impl" }
 
 [package]
 name = "tower-embed"
-version = "0.2.0"
+version = "0.3.0"
 description = "Tower service to serve embedded assets"
 keywords = ["tower", "http", "static"]
 documentation = "https://docs.rs/tower-embed"
