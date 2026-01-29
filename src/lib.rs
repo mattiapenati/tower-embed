@@ -16,6 +16,9 @@
 //! [`tower`]: https://crates.io/crates/tower
 //! [examples]: https://github.com/mattiapenati/tower-embed/tree/main/examples
 
+#[cfg(not(feature = "tokio"))]
+compile_error!("Only tokio runtime is supported, and it is required to use `tower-embed`.");
+
 use std::{
     marker::PhantomData,
     task::{Context, Poll},
