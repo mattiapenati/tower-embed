@@ -7,7 +7,7 @@ use bytes::Bytes;
 use futures_core::Stream;
 use http_body::{Body, Frame};
 use http_body_util::BodyExt;
-use tower_embed_core::{BoxError, Embedded, Metadata};
+use tower_embed_core::{BoxError, Embedded};
 
 use crate::core::headers::HeaderMapExt;
 
@@ -127,20 +127,18 @@ impl ResponseFuture {
     }
 
     pub(crate) fn file(embedded: Embedded) -> Self {
+        let Embedded { content, metadata } = embedded;
+
         let mut response = http::Response::builder()
             .status(http::StatusCode::OK)
-            .body(ResponseBody::stream(embedded.content))
+            .body(ResponseBody::stream(content))
             .unwrap();
 
-        let Metadata {
-            content_type,
-            etag,
-            last_modified,
-        } = embedded.metadata;
-
-        response.headers_mut().typed_insert(content_type);
-        response.headers_mut().typed_insert(etag);
-        if let Some(last_modified) = last_modified {
+        response.headers_mut().typed_insert(metadata.content_type);
+        if let Some(etag) = metadata.etag {
+            response.headers_mut().typed_insert(etag);
+        }
+        if let Some(last_modified) = metadata.last_modified {
             response.headers_mut().typed_insert(last_modified);
         }
 

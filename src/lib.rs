@@ -93,7 +93,8 @@ where
 
         // Make the request conditional if an If-None-Match header is present
         if let Some(if_none_match) = req.headers().typed_get::<headers::IfNoneMatch>()
-            && !if_none_match.condition_passes(&embedded.metadata.etag)
+            && let Some(etag) = &embedded.metadata.etag
+            && !if_none_match.condition_passes(etag)
         {
             return ResponseFuture::not_modified();
         }
