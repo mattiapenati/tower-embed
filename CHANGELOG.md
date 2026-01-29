@@ -1,4 +1,4 @@
-## v0.3.0 [UNRELEASED]
+## v0.3.0
 
 - replace [`rust-embed`] with custom asset embedding solution
 - enable support to streaming in response body
