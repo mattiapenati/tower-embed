@@ -14,7 +14,6 @@
 //! [examples]: https://github.com/mattiapenati/tower-embed/tree/main/examples
 
 use std::{
-    borrow::Cow,
     marker::PhantomData,
     task::{Context, Poll},
 };
@@ -30,6 +29,9 @@ pub use tower_embed_core::Embed;
 
 #[doc(inline)]
 pub use self::response::{ResponseBody, ResponseFuture};
+
+#[doc(hidden)]
+pub mod file;
 
 mod response;
 
@@ -74,48 +76,6 @@ where
     }
 
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
-        use core::headers::{self, HeaderMapExt};
-
-        if req.method() != http::Method::GET && req.method() != http::Method::HEAD {
-            return ResponseFuture::method_not_allowed();
-        }
-
-        let path = get_file_path_from_uri(req.uri());
-        let embedded = match E::get(path.as_ref()) {
-            Err(ref err) if err.kind() == std::io::ErrorKind::NotFound => {
-                return ResponseFuture::file_not_found();
-            }
-            Err(_) => {
-                return ResponseFuture::internal_server_error();
-            }
-            Ok(embedded) => embedded,
-        };
-
-        // Make the request conditional if an If-None-Match header is present
-        if let Some(if_none_match) = req.headers().typed_get::<headers::IfNoneMatch>()
-            && let Some(etag) = &embedded.metadata.etag
-            && !if_none_match.condition_passes(etag)
-        {
-            return ResponseFuture::not_modified();
-        }
-
-        // Make the request conditional if an If-Modified-Since header is present
-        if let Some(if_modified_since) = req.headers().typed_get::<headers::IfModifiedSince>()
-            && let Some(last_modified) = embedded.metadata.last_modified
-            && !if_modified_since.condition_passes(&last_modified)
-        {
-            return ResponseFuture::not_modified();
-        }
-
-        ResponseFuture::file(embedded)
-    }
-}
-
-fn get_file_path_from_uri(uri: &http::Uri) -> Cow<'_, str> {
-    let path = uri.path();
-    if path.ends_with("/") {
-        Cow::Owned(format!("{}index.html", path.trim_start_matches('/')))
-    } else {
-        Cow::Borrowed(path.trim_start_matches('/'))
+        ResponseFuture::new::<E, _>(&req)
     }
 }

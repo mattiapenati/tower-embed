@@ -51,9 +51,12 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
         }}
     });
 
+    let root = root.as_str();
+
     let expanded = quote::quote! {
         impl #crate_path::Embed for #ident {
-            fn get(path: &str) -> std::io::Result<#crate_path::core::Embedded> {
+            #[cfg(not(debug_assertions))]
+            fn get(path: &str) -> impl Future<Output = std::io::Result<#crate_path::core::Embedded>> + Send + 'static {
                 use std::{collections::HashMap, sync::LazyLock, path::Path};
 
                 use #crate_path::core::{Content, Embedded, Metadata, headers};
@@ -67,12 +70,37 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
                     m
                 });
 
-                match FILES.get(path) {
+                let output = match FILES.get(path) {
                     Some((bytes, metadata)) => Ok(Embedded {
                         content: Content::from_static(bytes),
                         metadata: metadata.clone(),
                     }),
                     None => Err(std::io::ErrorKind::NotFound.into()),
+                };
+                std::future::ready(output)
+            }
+
+            #[cfg(debug_assertions)]
+            fn get(path: &str) -> impl Future<Output = std::io::Result<#crate_path::core::Embedded>> + Send + 'static {
+                use std::path::Path;
+
+                use #crate_path::core::{Content, Embedded, Metadata};
+
+                const ROOT: &str = #root;
+
+                let metadata = Metadata {
+                    content_type: #crate_path::core::content_type(Path::new(path)),
+                    etag: None,
+                    last_modified: None,
+                };
+                let filename = Path::new(ROOT).join(path.trim_start_matches('/'));
+                async move {
+                    #crate_path::file::File::open(&filename).await.map(|file| {
+                        Embedded {
+                            content: Content::from_stream(file),
+                            metadata,
+                        }
+                    })
                 }
             }
         }
