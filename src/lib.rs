@@ -2,9 +2,12 @@
 //! assets support for web application. This service includes the following HTTP features:
 //!
 //! - Support for GET and HEAD requests
-//! - Content-Type header generation based on file MIME types
-//! - ETag header generation and validation
-//! - Last-Modified header generation and validation
+//! - `Content-Type` header generation based on file MIME type guessed from extension.
+//! - `ETag` header generation and validation.
+//! - `Last-Modified` header generation and validation.
+//!
+//! In `debug` mode, assets are served directly from the filesystem to facilitate rapid
+//! development. Both `ETag` and `Last-Modified` headers are not generated in this mode.
 //!
 //! # Usage
 //!
