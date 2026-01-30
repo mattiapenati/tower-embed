@@ -5,7 +5,6 @@ use std::{
 
 use bytes::Bytes;
 use futures_core::Stream;
-use http_body::Frame;
 use tokio_util::io::ReaderStream;
 
 use crate::core::BoxError;
@@ -22,12 +21,12 @@ impl File {
 }
 
 impl Stream for File {
-    type Item = Result<Frame<Bytes>, BoxError>;
+    type Item = Result<Bytes, BoxError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let inner = Pin::new(&mut self.0);
         match ready!(inner.poll_next(cx)) {
-            Some(Ok(bytes)) => Some(Ok(Frame::data(bytes))),
+            Some(Ok(bytes)) => Some(Ok(bytes)),
             Some(Err(err)) => Some(Err(err.into())),
             None => None,
         }

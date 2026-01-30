@@ -30,7 +30,7 @@ pub struct Embedded {
 pub type BoxError = Box<dyn Error + Send + Sync>;
 
 /// A stream of binary content.
-pub struct Content(BoxStream<'static, Result<Frame<Bytes>, BoxError>>);
+pub struct Content(BoxStream<'static, Result<Bytes, BoxError>>);
 
 impl Content {
     /// Creates a [`Content`] from a static slice of bytes.
@@ -41,7 +41,7 @@ impl Content {
     /// Creates a [`Content`] from a stream of frames.
     pub fn from_stream<S, E>(stream: S) -> Self
     where
-        S: Stream<Item = Result<Frame<Bytes>, E>> + Send + 'static,
+        S: Stream<Item = Result<Bytes, E>> + Send + 'static,
         E: Into<BoxError>,
     {
         Self(Box::pin(StreamContent(stream)))
@@ -52,7 +52,7 @@ impl Stream for Content {
     type Item = Result<Frame<Bytes>, BoxError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.0.as_mut().poll_next(cx)
+        self.0.as_mut().poll_next(cx).map_ok(Frame::data)
     }
 }
 
@@ -65,12 +65,12 @@ impl StaticContent {
 }
 
 impl Stream for StaticContent {
-    type Item = Result<Frame<Bytes>, BoxError>;
+    type Item = Result<Bytes, BoxError>;
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.0
             .take()
-            .map(|bytes| Ok(Frame::data(Bytes::from_static(bytes))))
+            .map(|bytes| Ok(Bytes::from_static(bytes)))
             .into()
     }
 }
@@ -79,15 +79,15 @@ struct StreamContent<S>(S);
 
 impl<S, E> Stream for StreamContent<S>
 where
-    S: Stream<Item = Result<Frame<Bytes>, E>>,
+    S: Stream<Item = Result<Bytes, E>>,
     E: Into<BoxError>,
 {
-    type Item = Result<Frame<Bytes>, BoxError>;
+    type Item = Result<Bytes, BoxError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let inner = unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().0) };
         match ready!(inner.poll_next(cx)) {
-            Some(Ok(frame)) => Some(Ok(frame)),
+            Some(Ok(bytes)) => Some(Ok(bytes)),
             Some(Err(err)) => Some(Err(err.into())),
             None => None,
         }
