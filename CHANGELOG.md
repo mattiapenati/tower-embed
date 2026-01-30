@@ -1,3 +1,7 @@
+## v0.4.0 [UNRELEASED]
+
+- add custom index file support
+
 ## v0.3.0
 
 - replace [`rust-embed`] with custom asset embedding solution
