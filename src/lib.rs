@@ -21,6 +21,7 @@ compile_error!("Only tokio runtime is supported, and it is required to use `towe
 
 use std::{
     marker::PhantomData,
+    sync::Arc,
     task::{Context, Poll},
 };
 
@@ -41,24 +42,25 @@ pub mod file;
 
 mod response;
 
+type Handler404 = Box<dyn Fn() -> http::Response<ResponseBody> + Send + Sync>;
+type Handler500 = Box<dyn Fn(std::io::Error) -> http::Response<ResponseBody> + Send + Sync>;
+struct Handlers {
+    e404: Handler404,
+    e500: Handler500,
+}
+
 /// Service that serves files from embedded assets.
 pub struct ServeEmbed<E: Embed> {
     _embed: PhantomData<E>,
+    /// Custom error handlers.
+    handlers: Arc<Handlers>,
 }
 
 impl<E: Embed> Clone for ServeEmbed<E> {
     fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<E: Embed> Copy for ServeEmbed<E> {}
-
-impl<E: Embed> ServeEmbed<E> {
-    /// Create a new [`ServeEmbed`] service.
-    pub fn new() -> Self {
         Self {
             _embed: PhantomData,
+            handlers: Arc::clone(&self.handlers),
         }
     }
 }
@@ -66,6 +68,18 @@ impl<E: Embed> ServeEmbed<E> {
 impl<E: Embed> Default for ServeEmbed<E> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<E: Embed> ServeEmbed<E> {
+    /// Create a new [`ServeEmbed`] service.
+    pub fn new() -> Self {
+        Self::builder().build::<E>()
+    }
+
+    /// Create a new [`ServeEmbedBuilder`] to customize the service.
+    pub fn builder() -> ServeEmbedBuilder {
+        ServeEmbedBuilder::new()
     }
 }
 
@@ -82,6 +96,55 @@ where
     }
 
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
-        ResponseFuture::new::<E, _>(&req)
+        ResponseFuture::new::<E, _>(&req, Arc::clone(&self.handlers))
+    }
+}
+
+/// Builder for [`ServeEmbed`] service.
+pub struct ServeEmbedBuilder {
+    handlers: Handlers,
+}
+
+impl Default for ServeEmbedBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ServeEmbedBuilder {
+    /// Create a new [`ServeEmbedBuilder`].
+    pub fn new() -> Self {
+        Self {
+            handlers: Handlers {
+                e404: Box::new(response::default_404_response),
+                e500: Box::new(response::default_500_response),
+            },
+        }
+    }
+
+    /// Set a custom 404 error handler.
+    pub fn handle_404<F>(mut self, f: F) -> Self
+    where
+        F: Fn() -> http::Response<ResponseBody> + Send + Sync + 'static,
+    {
+        self.handlers.e404 = Box::new(f);
+        self
+    }
+
+    /// Set a custom 500 error handler.
+    pub fn handle_500<F>(mut self, f: F) -> Self
+    where
+        F: Fn(std::io::Error) -> http::Response<ResponseBody> + Send + Sync + 'static,
+    {
+        self.handlers.e500 = Box::new(f);
+        self
+    }
+
+    /// Build the [`ServeEmbed`] service.
+    pub fn build<E: Embed>(self) -> ServeEmbed<E> {
+        ServeEmbed {
+            _embed: PhantomData,
+            handlers: Arc::new(self.handlers),
+        }
     }
 }

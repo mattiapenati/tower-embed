@@ -1,6 +1,7 @@
 ## v0.4.0 [UNRELEASED]
 
 - add custom index file support
+- add custom error page support
 
 ## v0.3.0
 
