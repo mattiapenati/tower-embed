@@ -117,7 +117,7 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
                 const ROOT: &str = #root;
 
                 let mut filename = Path::new(ROOT).join(path);
-                let stripped_path = &Path::new(path.trim_end_matches('/'));
+                let stripped_path = Path::new(ROOT).join(path.trim_end_matches('/'));
                 if stripped_path.is_dir() {
                     filename = filename.join(#index);
                 }

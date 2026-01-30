@@ -5,6 +5,7 @@
 //! - `Content-Type` header generation based on file MIME type guessed from extension.
 //! - `ETag` header generation and validation.
 //! - `Last-Modified` header generation and validation.
+//! - Customizable 404 page.
 //!
 //! In `debug` mode, assets are served directly from the filesystem to facilitate rapid
 //! development. Both `ETag` and `Last-Modified` headers are not generated in this mode.
@@ -13,7 +14,7 @@
 //!
 //! ```no_run
 //! use axum::Router;
-//! use tower_embed::{Embed, ServeEmbed};
+//! use tower_embed::{Embed, EmbedExt, ServeEmbed};
 //!
 //! #[derive(Embed)]
 //! #[embed(folder = "assets")]
@@ -21,7 +22,9 @@
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let assets = ServeEmbed::<Assets>::new();
+//!     let assets = ServeEmbed::builder()
+//!         .not_found_service(Assets::not_found_page("404.html"))
+//!         .build::<Assets>();
 //!     let router = Router::new().fallback_service(assets);
 //!
 //!     let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
@@ -31,7 +34,7 @@
 //! }
 //! ```
 //!
-//! Please see the [examples] directory for a working example.
+//! Please see the [examples] directory for working examples.
 //!
 //! [`tower`]: https://crates.io/crates/tower
 //! [examples]: https://github.com/mattiapenati/tower-embed/tree/main/examples
@@ -67,7 +70,7 @@ type NotFoundService =
     tower::util::BoxCloneSyncService<http::Request<()>, http::Response<ResponseBody>, Infallible>;
 
 /// Service that serves files from embedded assets.
-pub struct ServeEmbed<E> {
+pub struct ServeEmbed<E = ()> {
     _embed: PhantomData<E>,
     /// Fallback service for handling 404 Not Found errors.
     not_found_service: Option<NotFoundService>,
@@ -92,6 +95,13 @@ impl<E: Embed> ServeEmbed<E> {
     /// Create a new [`ServeEmbed`] service.
     pub fn new() -> Self {
         ServeEmbedBuilder::new().build::<E>()
+    }
+}
+
+impl ServeEmbed<()> {
+    /// Create a new [`ServeEmbedBuilder`] to customize a new service instance.
+    pub fn builder() -> ServeEmbedBuilder {
+        ServeEmbedBuilder::new()
     }
 }
 
