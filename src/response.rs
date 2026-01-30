@@ -76,11 +76,13 @@ pub struct ResponseFuture {
 
 enum ResponseFutureInner {
     Ready(Option<http::Response<ResponseBody>>),
-    WaitingEmbedded {
-        fut: BoxFuture<'static, std::io::Result<Embedded>>,
-        if_none_match: Option<headers::IfNoneMatch>,
-        if_modified_since: Option<headers::IfModifiedSince>,
-    },
+    WaitingEmbedded(WaitingEmbedded),
+}
+
+struct WaitingEmbedded {
+    future: BoxFuture<'static, std::io::Result<Embedded>>,
+    if_none_match: Option<headers::IfNoneMatch>,
+    if_modified_since: Option<headers::IfModifiedSince>,
 }
 
 impl ResponseFuture {
@@ -93,16 +95,12 @@ impl ResponseFuture {
         }
 
         let path = get_file_path_from_uri(req.uri());
-        let embedded = E::get(path.as_ref());
-
-        let if_none_match = req.headers().typed_get::<headers::IfNoneMatch>();
-        let if_modified_since = req.headers().typed_get::<headers::IfModifiedSince>();
-
-        let inner = ResponseFutureInner::WaitingEmbedded {
-            fut: Box::pin(embedded),
-            if_none_match,
-            if_modified_since,
+        let waiting_embedded = WaitingEmbedded {
+            future: Box::pin(E::get(path.as_ref())),
+            if_none_match: req.headers().typed_get::<headers::IfNoneMatch>(),
+            if_modified_since: req.headers().typed_get::<headers::IfModifiedSince>(),
         };
+        let inner = ResponseFutureInner::WaitingEmbedded(waiting_embedded);
         Self { inner }
     }
 
@@ -128,70 +126,73 @@ impl Future for ResponseFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let inner = &mut self.get_mut().inner;
 
-        let response = match inner {
-            ResponseFutureInner::Ready(response) => response
-                .take()
-                .expect("ResponseFuture polled after completion"),
-            ResponseFutureInner::WaitingEmbedded {
-                fut,
-                if_none_match,
-                if_modified_since,
-            } => match ready!(Pin::new(fut).poll(cx)) {
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                    *inner = ResponseFutureInner::Ready(None);
-                    http::Response::builder()
-                        .status(http::StatusCode::NOT_FOUND)
-                        .body(ResponseBody::empty())
-                        .unwrap()
-                }
-                Err(_) => {
-                    *inner = ResponseFutureInner::Ready(None);
-                    http::Response::builder()
-                        .status(http::StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(ResponseBody::empty())
-                        .unwrap()
-                }
-                Ok(embedded) => {
-                    // Make the request conditional if an If-None-Match header is present
-                    if let Some(if_none_match) = if_none_match
-                        && let Some(etag) = &embedded.metadata.etag
-                        && !if_none_match.condition_passes(etag)
-                    {
-                        return Poll::Ready(Ok(http::Response::builder()
-                            .status(http::StatusCode::NOT_MODIFIED)
-                            .body(ResponseBody::empty())
-                            .unwrap()));
-                    }
-
-                    // Make the request conditional if an If-Modified-Since header is present
-                    if let Some(if_modified_since) = if_modified_since
-                        && let Some(last_modified) = embedded.metadata.last_modified
-                        && !if_modified_since.condition_passes(&last_modified)
-                    {
-                        return Poll::Ready(Ok(http::Response::builder()
-                            .status(http::StatusCode::NOT_MODIFIED)
-                            .body(ResponseBody::empty())
-                            .unwrap()));
-                    }
-
-                    let Embedded { content, metadata } = embedded;
-                    let mut response = http::Response::builder()
-                        .status(http::StatusCode::OK)
-                        .body(ResponseBody::stream(content))
-                        .unwrap();
-
-                    response.headers_mut().typed_insert(metadata.content_type);
-                    if let Some(etag) = metadata.etag {
-                        response.headers_mut().typed_insert(etag);
-                    }
-                    if let Some(last_modified) = metadata.last_modified {
-                        response.headers_mut().typed_insert(last_modified);
-                    }
-
-                    response
-                }
-            },
+        let WaitingEmbedded {
+            future,
+            if_none_match,
+            if_modified_since,
+        } = match inner {
+            ResponseFutureInner::Ready(response) => {
+                return Poll::Ready(Ok(response
+                    .take()
+                    .expect("ResponseFuture polled after completion")));
+            }
+            ResponseFutureInner::WaitingEmbedded(waiting) => waiting,
         };
+
+        let Embedded { content, metadata } = match ready!(Pin::new(future).poll(cx)) {
+            Err(err) => {
+                let status = if err.kind() == std::io::ErrorKind::NotFound {
+                    http::StatusCode::NOT_FOUND
+                } else {
+                    http::StatusCode::INTERNAL_SERVER_ERROR
+                };
+                *inner = ResponseFutureInner::Ready(None);
+                return Poll::Ready(Ok(http::Response::builder()
+                    .status(status)
+                    .body(ResponseBody::empty())
+                    .unwrap()));
+            }
+            Ok(embedded) => embedded,
+        };
+
+        // Make the request conditional if an If-None-Match header is present
+        if let Some(if_none_match) = if_none_match
+            && let Some(etag) = &metadata.etag
+            && !if_none_match.condition_passes(etag)
+        {
+            *inner = ResponseFutureInner::Ready(None);
+            return Poll::Ready(Ok(http::Response::builder()
+                .status(http::StatusCode::NOT_MODIFIED)
+                .body(ResponseBody::empty())
+                .unwrap()));
+        }
+
+        // Make the request conditional if an If-Modified-Since header is present
+        if let Some(if_modified_since) = if_modified_since
+            && let Some(last_modified) = metadata.last_modified
+            && !if_modified_since.condition_passes(&last_modified)
+        {
+            *inner = ResponseFutureInner::Ready(None);
+            return Poll::Ready(Ok(http::Response::builder()
+                .status(http::StatusCode::NOT_MODIFIED)
+                .body(ResponseBody::empty())
+                .unwrap()));
+        }
+
+        let mut response = http::Response::builder()
+            .status(http::StatusCode::OK)
+            .body(ResponseBody::stream(content))
+            .unwrap();
+
+        response.headers_mut().typed_insert(metadata.content_type);
+        if let Some(etag) = metadata.etag {
+            response.headers_mut().typed_insert(etag);
+        }
+        if let Some(last_modified) = metadata.last_modified {
+            response.headers_mut().typed_insert(last_modified);
+        }
+
+        *inner = ResponseFutureInner::Ready(None);
         Poll::Ready(Ok(response))
     }
 }
