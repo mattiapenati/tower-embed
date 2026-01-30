@@ -1,5 +1,5 @@
 use axum::Router;
-use tower_embed::{Embed, EmbedExt, ServeEmbedBuilder};
+use tower_embed::{Embed, EmbedExt, ServeEmbed};
 
 #[derive(Embed)]
 #[embed(folder = "assets")]
@@ -7,7 +7,7 @@ struct Assets;
 
 #[tokio::main]
 async fn main() {
-    let assets = ServeEmbedBuilder::new()
+    let assets = ServeEmbed::builder()
         .not_found_service(Assets::not_found_page("404.html"))
         .build::<Assets>();
     let router = Router::new().fallback_service(assets);
