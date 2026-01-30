@@ -107,6 +107,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-custom-404"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "tokio",
+ "tower-embed",
+]
+
+[[package]]
 name = "form_urlencoded"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -588,9 +600,9 @@ dependencies = [
  "http-body-util",
  "tokio",
  "tokio-util",
+ "tower",
  "tower-embed-core",
  "tower-embed-impl",
- "tower-service",
 ]
 
 [[package]]
