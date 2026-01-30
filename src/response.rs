@@ -1,5 +1,6 @@
 use std::{
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll, ready},
 };
 
@@ -9,7 +10,7 @@ use http_body::{Body, Frame};
 use http_body_util::BodyExt;
 use tower_embed_core::{BoxError, Embed, Embedded, headers};
 
-use crate::core::headers::HeaderMapExt;
+use crate::{Handlers, core::headers::HeaderMapExt};
 
 type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, BoxError>;
 
@@ -80,12 +81,13 @@ enum ResponseFutureInner {
 
 struct WaitingEmbedded {
     future: BoxFuture<'static, std::io::Result<Embedded>>,
+    handlers: Arc<Handlers>,
     if_none_match: Option<headers::IfNoneMatch>,
     if_modified_since: Option<headers::IfModifiedSince>,
 }
 
 impl ResponseFuture {
-    pub(crate) fn new<E, B>(req: &http::Request<B>) -> Self
+    pub(crate) fn new<E, B>(req: &http::Request<B>, handlers: Arc<Handlers>) -> Self
     where
         E: Embed,
     {
@@ -96,6 +98,7 @@ impl ResponseFuture {
         let path = req.uri().path();
         let waiting_embedded = WaitingEmbedded {
             future: Box::pin(E::get(path)),
+            handlers,
             if_none_match: req.headers().typed_get::<headers::IfNoneMatch>(),
             if_modified_since: req.headers().typed_get::<headers::IfModifiedSince>(),
         };
@@ -127,6 +130,7 @@ impl Future for ResponseFuture {
 
         let WaitingEmbedded {
             future,
+            handlers,
             if_none_match,
             if_modified_since,
         } = match inner {
@@ -140,16 +144,13 @@ impl Future for ResponseFuture {
 
         let Embedded { content, metadata } = match ready!(Pin::new(future).poll(cx)) {
             Err(err) => {
-                let status = if err.kind() == std::io::ErrorKind::NotFound {
-                    http::StatusCode::NOT_FOUND
-                } else {
-                    http::StatusCode::INTERNAL_SERVER_ERROR
+                let response = match err.kind() {
+                    std::io::ErrorKind::NotFound => (handlers.e404)(),
+                    _ => (handlers.e500)(err),
                 };
                 *inner = ResponseFutureInner::Ready(None);
-                return Poll::Ready(Ok(http::Response::builder()
-                    .status(status)
-                    .body(ResponseBody::empty())
-                    .unwrap()));
+
+                return Poll::Ready(Ok(response));
             }
             Ok(embedded) => embedded,
         };
@@ -160,10 +161,7 @@ impl Future for ResponseFuture {
             && !if_none_match.condition_passes(etag)
         {
             *inner = ResponseFutureInner::Ready(None);
-            return Poll::Ready(Ok(http::Response::builder()
-                .status(http::StatusCode::NOT_MODIFIED)
-                .body(ResponseBody::empty())
-                .unwrap()));
+            return Poll::Ready(Ok(default_304_response()));
         }
 
         // Make the request conditional if an If-Modified-Since header is present
@@ -172,10 +170,7 @@ impl Future for ResponseFuture {
             && !if_modified_since.condition_passes(&last_modified)
         {
             *inner = ResponseFutureInner::Ready(None);
-            return Poll::Ready(Ok(http::Response::builder()
-                .status(http::StatusCode::NOT_MODIFIED)
-                .body(ResponseBody::empty())
-                .unwrap()));
+            return Poll::Ready(Ok(default_304_response()));
         }
 
         let mut response = http::Response::builder()
@@ -194,4 +189,25 @@ impl Future for ResponseFuture {
         *inner = ResponseFutureInner::Ready(None);
         Poll::Ready(Ok(response))
     }
+}
+
+pub(crate) fn default_404_response() -> http::Response<ResponseBody> {
+    http::Response::builder()
+        .status(http::StatusCode::NOT_FOUND)
+        .body(ResponseBody::empty())
+        .unwrap()
+}
+
+pub(crate) fn default_500_response(_err: std::io::Error) -> http::Response<ResponseBody> {
+    http::Response::builder()
+        .status(http::StatusCode::INTERNAL_SERVER_ERROR)
+        .body(ResponseBody::empty())
+        .unwrap()
+}
+
+fn default_304_response() -> http::Response<ResponseBody> {
+    http::Response::builder()
+        .status(http::StatusCode::NOT_MODIFIED)
+        .body(ResponseBody::empty())
+        .unwrap()
 }
