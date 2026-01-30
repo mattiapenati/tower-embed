@@ -231,7 +231,7 @@ impl DeriveEmbedAttrs {
         };
 
         let crate_path = crate_path.unwrap_or_else(|| syn::parse_quote! { tower_embed });
-        let index = index.unwrap_or_else(|| Cow::Borrowed("index.html"));
+        let index = index.unwrap_or(Cow::Borrowed("index.html"));
 
         Ok(Self {
             folder,
