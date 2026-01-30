@@ -105,7 +105,8 @@ impl ResponseFuture {
             return Self::method_not_allowed();
         }
 
-        let path = request.uri().path();
+        let path = request.uri().path().trim_start_matches('/');
+
         let waiting_embedded = PollEmbedded {
             future: Box::pin(E::get(path)),
             request: Some(request),

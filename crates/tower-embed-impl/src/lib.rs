@@ -49,6 +49,8 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
 
         let relative_path = file.relative_path.as_str();
         let absolute_path = file.absolute_path.as_str();
+        let redirect_path = format!("{relative_path}/{index}");
+        let redirect_path = redirect_path.trim_start_matches('/');
 
         match file.kind {
             FileKind::File => quote::quote! {{
@@ -58,11 +60,13 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
                     etag: Some(#crate_path::core::etag(content)),
                     last_modified: #last_modified,
                 };
-                (concat!("/", #relative_path), Entry::File(content, metadata))
+                [(#relative_path, Entry::File(content, metadata))]
             }},
             FileKind::Dir => quote::quote! {{
-                let redirect_path = concat!(#relative_path, "/", #index);
-                (concat!("/", #relative_path), Entry::Redirect(redirect_path))
+                [
+                    (#relative_path, Entry::Redirect(#redirect_path)),
+                    (concat!(#relative_path, "/"), Entry::Redirect(#redirect_path)),
+                ]
             }},
         }
     });
@@ -84,18 +88,11 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
 
                 const FILES: LazyLock<HashMap<&'static str, Entry>> = LazyLock::new(|| {
                     let mut m = HashMap::new();
-                    #({
-                        let (key, value) = #embedded_files;
-                        m.insert(key, value);
-                    })*
+                    #(m.extend(#embedded_files);)*
                     m
                 });
 
-                let mut path = path.strip_suffix('/').unwrap_or(path);
-                if path.is_empty() {
-                    path = "/";
-                }
-
+                let mut path = path;
                 let output = loop {
                     match FILES.get(path) {
                         Some(Entry::File(bytes, metadata)) => break Ok(Embedded {
@@ -119,8 +116,9 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
 
                 const ROOT: &str = #root;
 
-                let mut filename = Path::new(ROOT).join(path.trim_start_matches('/'));
-                if filename.is_dir() {
+                let mut filename = Path::new(ROOT).join(path);
+                let stripped_path = &Path::new(path.trim_end_matches('/'));
+                if stripped_path.is_dir() {
                     filename = filename.join(#index);
                 }
 
