@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     pin::Pin,
     task::{Context, Poll, ready},
 };
@@ -94,9 +93,9 @@ impl ResponseFuture {
             return Self::method_not_allowed();
         }
 
-        let path = get_file_path_from_uri(req.uri());
+        let path = req.uri().path();
         let waiting_embedded = WaitingEmbedded {
-            future: Box::pin(E::get(path.as_ref())),
+            future: Box::pin(E::get(path)),
             if_none_match: req.headers().typed_get::<headers::IfNoneMatch>(),
             if_modified_since: req.headers().typed_get::<headers::IfModifiedSince>(),
         };
@@ -194,14 +193,5 @@ impl Future for ResponseFuture {
 
         *inner = ResponseFutureInner::Ready(None);
         Poll::Ready(Ok(response))
-    }
-}
-
-fn get_file_path_from_uri(uri: &http::Uri) -> Cow<'_, str> {
-    let path = uri.path();
-    if path.ends_with("/") {
-        Cow::Owned(format!("{}index.html", path.trim_start_matches('/')))
-    } else {
-        Cow::Borrowed(path.trim_start_matches('/'))
     }
 }
