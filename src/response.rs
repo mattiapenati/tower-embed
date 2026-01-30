@@ -107,12 +107,25 @@ impl ResponseFuture {
 
         let path = request.uri().path().trim_start_matches('/');
 
-        let waiting_embedded = PollEmbedded {
+        let poll_embedded = PollEmbedded {
             future: Box::pin(E::get(path)),
             request: Some(request),
             not_found_service,
         };
-        let inner = ResponseFutureInner::PollEmbedded(waiting_embedded);
+        let inner = ResponseFutureInner::PollEmbedded(poll_embedded);
+        Self { inner }
+    }
+
+    pub(crate) fn poll_embedded<F>(future: F, request: http::Request<()>) -> Self
+    where
+        F: Future<Output = std::io::Result<Embedded>> + Send + 'static,
+    {
+        let poll_embedded = PollEmbedded {
+            future: Box::pin(future),
+            request: Some(request),
+            not_found_service: None,
+        };
+        let inner = ResponseFutureInner::PollEmbedded(poll_embedded);
         Self { inner }
     }
 

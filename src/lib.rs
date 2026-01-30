@@ -42,10 +42,10 @@ compile_error!("Only tokio runtime is supported, and it is required to use `towe
 use std::{
     convert::Infallible,
     marker::PhantomData,
+    sync::Arc,
     task::{Context, Poll},
 };
 
-use tower::util::BoxCloneSyncService;
 #[doc(inline)]
 pub use tower_embed_impl::Embed;
 
@@ -138,7 +138,7 @@ impl ServeEmbedBuilder {
             + 'static,
         S::Future: Send + 'static,
     {
-        self.not_found_service = Some(BoxCloneSyncService::new(service));
+        self.not_found_service = Some(tower::util::BoxCloneSyncService::new(service));
         self
     }
 
@@ -148,5 +148,56 @@ impl ServeEmbedBuilder {
             _embed: PhantomData,
             not_found_service: self.not_found_service,
         }
+    }
+}
+
+/// Extension trait for [`Embed`].
+pub trait EmbedExt: Embed + Sized {
+    /// Returns a service that serves a custom not found page.
+    fn not_found_page(path: &str) -> NotFoundPage<Self> {
+        NotFoundPage::new(path.to_string())
+    }
+}
+
+impl<T> EmbedExt for T where T: Embed + Sized {}
+
+/// A service that serves a custom not found page.
+pub struct NotFoundPage<E>(Arc<NotFoundPageInner<E>>);
+
+impl<E> Clone for NotFoundPage<E> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
+struct NotFoundPageInner<E> {
+    _embed: PhantomData<E>,
+    page: String,
+}
+
+impl<E> NotFoundPage<E> {
+    fn new(page: String) -> Self {
+        Self(Arc::new(NotFoundPageInner {
+            _embed: PhantomData,
+            page,
+        }))
+    }
+}
+
+impl<E> tower::Service<http::Request<()>> for NotFoundPage<E>
+where
+    E: Embed,
+{
+    type Response = http::Response<ResponseBody>;
+    type Error = Infallible;
+    type Future = ResponseFuture;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, request: http::Request<()>) -> Self::Future {
+        let future = E::get(&self.0.page);
+        ResponseFuture::poll_embedded(future, request)
     }
 }
