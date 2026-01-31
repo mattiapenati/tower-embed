@@ -106,6 +106,7 @@ impl ResponseFuture {
         }
 
         let path = request.uri().path().trim_start_matches('/');
+        tracing::trace!("Serving embedded resource '{}'", path);
 
         let poll_embedded = PollEmbedded {
             future: Box::pin(E::get(path)),
@@ -171,11 +172,14 @@ impl Future for ResponseFuture {
                     Poll::Ready(Ok(response))
                 }
                 ResponseFutureInner::PollEmbedded(waiting) => {
+                    let path = waiting.request.as_ref().unwrap().uri().path();
+
                     match ready!(Pin::new(&mut waiting.future).poll(cx)) {
                         Err(err)
                             if err.kind() == std::io::ErrorKind::NotFound
                                 || err.kind() == std::io::ErrorKind::NotADirectory =>
                         {
+                            tracing::trace!("Embedded resource not found: '{path}'");
                             match waiting.not_found_service.take() {
                                 Some(not_found_service) => {
                                     *inner = ResponseFutureInner::NotFoundReady(
@@ -191,6 +195,8 @@ impl Future for ResponseFuture {
                             }
                         }
                         Err(err) => {
+                            tracing::error!("Failed to get embedded resource '{path}': {err}");
+
                             let response = server_error_response(err);
                             *inner = ResponseFutureInner::Ready(None);
                             Poll::Ready(Ok(response))
@@ -204,6 +210,7 @@ impl Future for ResponseFuture {
                                 && let Some(etag) = &metadata.etag
                                 && !if_none_match.condition_passes(etag)
                             {
+                                tracing::trace!("ETag match for embedded resource '{path}'");
                                 *inner = ResponseFutureInner::Ready(None);
                                 return Poll::Ready(Ok(not_modified_response()));
                             }
@@ -214,6 +221,9 @@ impl Future for ResponseFuture {
                                 && let Some(last_modified) = &metadata.last_modified
                                 && !if_modified_since.condition_passes(last_modified)
                             {
+                                tracing::trace!(
+                                    "Last-Modified match for embedded resource '{path}'"
+                                );
                                 *inner = ResponseFutureInner::Ready(None);
                                 return Poll::Ready(Ok(not_modified_response()));
                             }
