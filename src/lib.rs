@@ -1,10 +1,16 @@
-//! This crate provides a [`tower`] service designed to provide embedded static
-//! assets support for web application. This service includes the following HTTP features:
+//! **tower-embed** is a [`tower`] service that efficiently serves embedded static assets
+//! in Rust web applications. It provides a production-ready solution for bundling and 
+//! serving static files (HTML, CSS, JavaScript, images, etc.) directly within your 
+//! compiled binary, eliminating the need for external file deployments.
 //!
-//! - Support for GET and HEAD requests
-//! - `Content-Type` header generation based on file MIME type guessed from extension.
-//! - `ETag` header generation and validation.
-//! - `Last-Modified` header generation and validation.
+//! ## Features
+//!
+//! This service includes comprehensive HTTP features for optimal asset delivery:
+//!
+//! - **HTTP Method Support**: GET and HEAD requests
+//! - **Smart Content Detection**: Automatic `Content-Type` header generation based on file MIME type detection
+//! - **Efficient Caching**: `ETag` and `Last-Modified` header generation and validation
+//! - **Development-Friendly**: In `debug` mode, assets are served directly from the filesystem for rapid iteration
 //!
 //! In `debug` mode, assets are served directly from the filesystem to facilitate rapid
 //! development. Both `ETag` and `Last-Modified` headers are not generated in this mode.
