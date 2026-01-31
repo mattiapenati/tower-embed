@@ -11,6 +11,7 @@ use futures_core::{Stream, stream::BoxStream};
 use http_body::Frame;
 
 pub mod headers;
+pub mod http;
 
 /// A trait used to access to binary assets in a directory.
 pub trait Embed {

@@ -45,6 +45,7 @@ compile_error!("Only tokio runtime is supported, and it is required to use `towe
 use std::{
     convert::Infallible,
     marker::PhantomData,
+    pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
@@ -56,18 +57,33 @@ pub use tower_embed_impl::Embed;
 pub use tower_embed_core as core;
 
 #[doc(inline)]
-pub use tower_embed_core::Embed;
-
-#[doc(inline)]
-pub use self::response::{ResponseBody, ResponseFuture};
+pub use tower_embed_core::{Embed, http::Body};
 
 #[doc(hidden)]
 pub mod file;
 
-mod response;
+/// Response future of [`ServeEmbed`]
+pub struct ResponseFuture(ResponseFutureInner);
 
-type NotFoundService =
-    tower::util::BoxCloneSyncService<http::Request<()>, http::Response<ResponseBody>, Infallible>;
+type ResponseFutureInner =
+    Pin<Box<dyn Future<Output = Result<http::Response<Body>, Infallible>> + Send>>;
+
+impl ResponseFuture {
+    fn new<F>(future: F) -> Self
+    where
+        F: Future<Output = Result<http::Response<Body>, Infallible>> + Send + 'static,
+    {
+        ResponseFuture(Box::pin(future))
+    }
+}
+
+impl Future for ResponseFuture {
+    type Output = Result<http::Response<Body>, Infallible>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.0.as_mut().poll(cx)
+    }
+}
 
 /// Service that serves files from embedded assets.
 pub struct ServeEmbed<E = ()> {
@@ -75,6 +91,9 @@ pub struct ServeEmbed<E = ()> {
     /// Fallback service for handling 404 Not Found errors.
     not_found_service: Option<NotFoundService>,
 }
+
+type NotFoundService =
+    tower::util::BoxCloneSyncService<http::Request<()>, http::Response<Body>, Infallible>;
 
 impl<E> Clone for ServeEmbed<E> {
     fn clone(&self) -> Self {
@@ -107,9 +126,9 @@ impl ServeEmbed<()> {
 
 impl<E, ReqBody> tower::Service<http::Request<ReqBody>> for ServeEmbed<E>
 where
-    E: Embed,
+    E: Embed + Send + 'static,
 {
-    type Response = http::Response<ResponseBody>;
+    type Response = http::Response<Body>;
     type Error = std::convert::Infallible;
     type Future = ResponseFuture;
 
@@ -119,7 +138,18 @@ where
 
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
         let req = req.map(|_| ());
-        ResponseFuture::new::<E>(req, self.not_found_service.clone())
+        let not_found_service = self.not_found_service.clone();
+        ResponseFuture::new(async move {
+            let response =
+                if req.method() != http::Method::GET && req.method() != http::Method::HEAD {
+                    method_not_allowed()
+                } else {
+                    let path = req.uri().path().trim_start_matches('/');
+                    tracing::trace!("Serving embedded resource '{path}'");
+                    handle_request(E::get(path), req, not_found_service).await
+                };
+            Ok(response)
+        })
     }
 }
 
@@ -138,11 +168,8 @@ impl ServeEmbedBuilder {
     /// Set the fallback service.
     pub fn not_found_service<S>(mut self, service: S) -> Self
     where
-        S: tower::Service<
-                http::Request<()>,
-                Response = http::Response<ResponseBody>,
-                Error = Infallible,
-            > + Send
+        S: tower::Service<http::Request<()>, Response = http::Response<Body>, Error = Infallible>
+            + Send
             + Sync
             + Clone
             + 'static,
@@ -198,7 +225,7 @@ impl<E> tower::Service<http::Request<()>> for NotFoundPage<E>
 where
     E: Embed,
 {
-    type Response = http::Response<ResponseBody>;
+    type Response = http::Response<Body>;
     type Error = Infallible;
     type Future = ResponseFuture;
 
@@ -206,8 +233,117 @@ where
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, request: http::Request<()>) -> Self::Future {
-        let future = E::get(&self.0.page);
-        ResponseFuture::poll_embedded(future, request)
+    fn call(&mut self, req: http::Request<()>) -> Self::Future {
+        let embedded = E::get(&self.0.page);
+        ResponseFuture::new(async move { Ok(handle_request(embedded, req, None).await) })
     }
+}
+
+async fn handle_request<F>(
+    embedded: F,
+    request: http::Request<()>,
+    not_found_service: Option<NotFoundService>,
+) -> http::Response<Body>
+where
+    F: Future<Output = std::io::Result<core::Embedded>> + Send,
+{
+    use core::headers::{self, HeaderMapExt};
+
+    let path = request.uri().path().trim_start_matches('/');
+    let core::Embedded { content, metadata } = match embedded.await {
+        Ok(embedded) => embedded,
+        Err(err)
+            if err.kind() == std::io::ErrorKind::NotFound
+                || err.kind() == std::io::ErrorKind::NotADirectory =>
+        {
+            tracing::trace!("Embedded resource not found: '{path}'");
+            return not_found_response(request, not_found_service).await;
+        }
+        Err(err) => {
+            tracing::error!("Failed to get embedded resource '{path}': {err}");
+            return server_error_response(err);
+        }
+    };
+
+    let if_none_match = request.headers().typed_get::<headers::IfNoneMatch>();
+    if let Some(if_none_match) = if_none_match
+        && let Some(etag) = &metadata.etag
+        && !if_none_match.condition_passes(etag)
+    {
+        tracing::trace!("ETag match for embedded resource '{path}'");
+        return not_modified_response();
+    }
+
+    let if_modified_since = request.headers().typed_get::<headers::IfModifiedSince>();
+    if let Some(if_modified_since) = if_modified_since
+        && let Some(last_modified) = &metadata.last_modified
+        && !if_modified_since.condition_passes(last_modified)
+    {
+        tracing::trace!("Last-Modified match for embedded resource '{path}'");
+        return not_modified_response();
+    }
+
+    let mut response = http::Response::builder()
+        .status(http::StatusCode::OK)
+        .body(Body::stream(content))
+        .unwrap();
+
+    response.headers_mut().typed_insert(metadata.content_type);
+    if let Some(etag) = metadata.etag {
+        response.headers_mut().typed_insert(etag);
+    }
+    if let Some(last_modified) = metadata.last_modified {
+        response.headers_mut().typed_insert(last_modified);
+    }
+
+    response
+}
+
+async fn not_found_response(
+    request: http::Request<()>,
+    mut not_found_service: Option<NotFoundService>,
+) -> http::Response<Body> {
+    use tower::ServiceExt;
+
+    let mut response = match not_found_service.take() {
+        Some(service) => {
+            let service = service.ready_oneshot().await.unwrap();
+            service.oneshot(request).await.unwrap()
+        }
+        None => http::Response::builder()
+            .status(http::StatusCode::NOT_FOUND)
+            .body(Body::empty())
+            .unwrap(),
+    };
+    response.headers_mut().insert(
+        http::header::CACHE_CONTROL,
+        http::HeaderValue::from_static("no-store"),
+    );
+    response
+}
+
+fn not_modified_response() -> http::Response<Body> {
+    http::Response::builder()
+        .status(http::StatusCode::NOT_MODIFIED)
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn method_not_allowed() -> http::Response<Body> {
+    http::Response::builder()
+        .header(
+            http::header::ALLOW,
+            http::HeaderValue::from_static("GET, HEAD"),
+        )
+        .status(http::StatusCode::METHOD_NOT_ALLOWED)
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn server_error_response(_err: std::io::Error) -> http::Response<Body> {
+    http::Response::builder()
+        .status(http::StatusCode::INTERNAL_SERVER_ERROR)
+        .header(http::header::CACHE_CONTROL, "no-store")
+        .body(Body::empty())
+        .unwrap()
 }
