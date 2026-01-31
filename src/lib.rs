@@ -1,6 +1,6 @@
 //! **tower-embed** is a [`tower`] service that efficiently serves embedded static assets
-//! in Rust web applications. It provides a production-ready solution for bundling and 
-//! serving static files (HTML, CSS, JavaScript, images, etc.) directly within your 
+//! in Rust web applications. It provides a production-ready solution for bundling and
+//! serving static files (HTML, CSS, JavaScript, images, etc.) directly within your
 //! compiled binary, eliminating the need for external file deployments.
 //!
 //! ## Features
@@ -11,9 +11,6 @@
 //! - **Smart Content Detection**: Automatic `Content-Type` header generation based on file MIME type detection
 //! - **Efficient Caching**: `ETag` and `Last-Modified` header generation and validation
 //! - **Development-Friendly**: In `debug` mode, assets are served directly from the filesystem for rapid iteration
-//!
-//! In `debug` mode, assets are served directly from the filesystem to facilitate rapid
-//! development. Both `ETag` and `Last-Modified` headers are not generated in this mode.
 //!
 //! # Usage
 //!
