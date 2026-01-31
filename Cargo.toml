@@ -38,6 +38,7 @@ tokio-util = { version = "0.7.18", optional = true, features = ["io"] }
 tower = { version = "0.5.3", features = ["util"] }
 tower-embed-core = { path = "crates/tower-embed-core", version = "0.3.0" }
 tower-embed-impl = { path = "crates/tower-embed-impl", version = "0.3.0" }
+tracing = "0.1.44"
 
 [features]
 default = ["tokio"]

@@ -2,6 +2,7 @@
 
 - add custom index file support
 - add custom error page support
+- disable cache in error pages
 
 ## v0.3.0
 
