@@ -162,9 +162,13 @@ impl Future for ResponseFuture {
                     continue;
                 }
                 ResponseFutureInner::NotFoundCall(future) => {
-                    let response = ready!(Pin::new(future).poll(cx));
+                    let mut response = ready!(Pin::new(future).poll(cx)).unwrap();
+                    response.headers_mut().insert(
+                        http::header::CACHE_CONTROL,
+                        http::HeaderValue::from_static("no-store"),
+                    );
                     *inner = ResponseFutureInner::Ready(None);
-                    Poll::Ready(response)
+                    Poll::Ready(Ok(response))
                 }
                 ResponseFutureInner::PollEmbedded(waiting) => {
                     match ready!(Pin::new(&mut waiting.future).poll(cx)) {
@@ -240,6 +244,7 @@ impl Future for ResponseFuture {
 pub(crate) fn default_not_found_response() -> http::Response<ResponseBody> {
     http::Response::builder()
         .status(http::StatusCode::NOT_FOUND)
+        .header(http::header::CACHE_CONTROL, "no-store")
         .body(ResponseBody::empty())
         .unwrap()
 }
@@ -247,6 +252,7 @@ pub(crate) fn default_not_found_response() -> http::Response<ResponseBody> {
 pub(crate) fn server_error_response(_err: std::io::Error) -> http::Response<ResponseBody> {
     http::Response::builder()
         .status(http::StatusCode::INTERNAL_SERVER_ERROR)
+        .header(http::header::CACHE_CONTROL, "no-store")
         .body(ResponseBody::empty())
         .unwrap()
 }
