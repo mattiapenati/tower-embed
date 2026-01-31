@@ -4,27 +4,28 @@
 [![Latest Version](https://docs.rs/tower-embed/badge.svg)](https://docs.rs/tower-embed)
 ![Apache 2.0 OR MIT licensed](https://img.shields.io/badge/license-Apache2.0%2FMIT-blue.svg)
 
-This crate provides a [`tower`] service designed to provide embedded static
-assets support for web application. This service includes the following HTTP features:
+**tower-embed** is a [`tower`] service that efficiently serves embedded static assets in Rust web applications. It provides a production-ready solution for bundling and serving static files (HTML, CSS, JavaScript, images, etc.) directly within your compiled binary, eliminating the need for external file deployments.
 
-- Support for GET and HEAD requests
-- `Content-Type` header generation based on file MIME type guessed from extension.
-- `ETag` header generation and validation.
-- `Last-Modified` header generation and validation.
+## Features
 
-In `debug` mode, assets are served directly from the filesystem to facilitate
-rapid development. Both `ETag` and `Last-Modified` headers are not generated in
-this mode.
+This service includes comprehensive HTTP features for optimal asset delivery:
+
+- **HTTP Method Support**: GET and HEAD requests
+- **Smart Content Detection**: Automatic `Content-Type` header generation based on file MIME type detection from extensions
+- **Efficient Caching**: 
+  - `ETag` header generation and validation for strong cache control
+  - `Last-Modified` header generation and validation for conditional requests
+- **Development-Friendly**: In `debug` mode, assets are served directly from the filesystem for rapid iteration without recompilation (caching headers are disabled in this mode)
+- **Zero Dependencies at Runtime**: All assets are embedded in the binary at compile time in release builds
 
 ## Example
 
 ```rust
 use axum::Router;
-use tower_embed::rust_embed::RustEmbed;
+use tower_embed::Embed;
 
-#[derive(RustEmbed)]
-#[folder = "assets"]
-#[crate_path = "tower_embed::rust_embed"]
+#[derive(Embed)]
+#[embed(folder = "assets")]
 struct Assets;
 
 #[tokio::main]
@@ -38,6 +39,18 @@ async fn main() {
     axum::serve::serve(listener, router).await.unwrap();
 }
 ```
+
+This creates a Tower service that serves all files from the `assets` directory. In release builds, the files are embedded in the binary at compile time. In debug builds, files are read from the filesystem for faster development iteration.
+
+## Use Cases
+
+**tower-embed** is ideal for:
+
+- **Single Binary Deployment**: Ship web applications as a single executable with all assets included
+- **Microservices**: Serve UI assets alongside API endpoints without external file management
+- **Desktop Applications**: Embed web UIs in desktop apps built with frameworks like Tauri
+- **CLI Tools**: Include documentation or web-based dashboards in command-line tools
+- **Embedded Systems**: Deploy web interfaces to resource-constrained devices with minimal footprint
 
 ## License
 
