@@ -1,5 +1,8 @@
 //! Core functionalities of tower-embed.
 
+#[cfg(not(feature = "tokio"))]
+compile_error!("Only tokio runtime is supported, and it is required to use `tower-embed`.");
+
 use std::{
     error::Error,
     pin::Pin,
@@ -12,6 +15,9 @@ use http_body::Frame;
 
 pub mod headers;
 pub mod http;
+
+#[cfg(feature = "tokio")]
+pub mod file;
 
 /// A trait used to access to binary assets in a directory.
 pub trait Embed {
@@ -134,4 +140,32 @@ pub fn etag(content: &[u8]) -> headers::ETag {
 
     let etag = format!("{:016x}", hash);
     headers::ETag::new(&etag).unwrap()
+}
+
+#[cfg(feature = "tokio")]
+#[doc(hidden)]
+pub async fn serve_file(
+    path: String,
+    root: &'static str,
+    index: &'static str,
+) -> std::io::Result<Embedded> {
+    use std::path::Path;
+
+    let mut filename = Path::new(root).join(&path);
+    let stripped_path = Path::new(root).join(path.trim_end_matches('/'));
+    if stripped_path.is_dir() {
+        filename = filename.join(index);
+    }
+
+    let metadata = Metadata {
+        content_type: content_type(&filename),
+        etag: None,
+        last_modified: None,
+    };
+
+    let file = file::File::open(&filename).await?;
+    Ok(Embedded {
+        content: Content::from_stream(file),
+        metadata,
+    })
 }

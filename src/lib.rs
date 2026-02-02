@@ -59,9 +59,6 @@ pub use tower_embed_core as core;
 #[doc(inline)]
 pub use tower_embed_core::{Embed, http::Body};
 
-#[doc(hidden)]
-pub mod file;
-
 /// Response future of [`ServeEmbed`]
 pub struct ResponseFuture(ResponseFutureInner);
 

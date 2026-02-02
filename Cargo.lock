@@ -596,8 +596,6 @@ dependencies = [
  "bytes",
  "futures-core",
  "http",
- "tokio",
- "tokio-util",
  "tower",
  "tower-embed-core",
  "tower-embed-impl",
@@ -617,6 +615,8 @@ dependencies = [
  "mime",
  "mime_guess",
  "rapidhash",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

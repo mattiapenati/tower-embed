@@ -1,4 +1,6 @@
-## v0.4.0 [UNRELEASED]
+## v0.5.0 \[UNRELEASED\]
+
+## v0.4.0
 
 - add custom index file support
 - add custom error page support

@@ -110,32 +110,7 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
 
             #[cfg(debug_assertions)]
             fn get(path: &str) -> impl Future<Output = std::io::Result<#crate_path::core::Embedded>> + Send + 'static {
-                use std::path::Path;
-
-                use #crate_path::core::{Content, Embedded, Metadata};
-
-                const ROOT: &str = #root;
-
-                let mut filename = Path::new(ROOT).join(path);
-                let stripped_path = Path::new(ROOT).join(path.trim_end_matches('/'));
-                if stripped_path.is_dir() {
-                    filename = filename.join(#index);
-                }
-
-                let metadata = Metadata {
-                    content_type: #crate_path::core::content_type(&filename),
-                    etag: None,
-                    last_modified: None,
-                };
-
-                async move {
-                    #crate_path::file::File::open(&filename).await.map(|file| {
-                        Embedded {
-                            content: Content::from_stream(file),
-                            metadata,
-                        }
-                    })
-                }
+                #crate_path::core::serve_file(path.to_string(), #root, #index)
             }
         }
     };
