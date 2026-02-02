@@ -1,3 +1,5 @@
+//! File handling utilities.
+
 use std::{
     pin::Pin,
     task::{Context, Poll, ready},
@@ -7,7 +9,7 @@ use bytes::Bytes;
 use futures_core::Stream;
 use tokio_util::io::ReaderStream;
 
-use crate::core::BoxError;
+use crate::BoxError;
 
 /// An opened file handle.
 pub struct File(ReaderStream<tokio::fs::File>);
