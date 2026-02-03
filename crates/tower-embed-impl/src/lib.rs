@@ -26,15 +26,32 @@ pub fn derive_embed(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
-    let DeriveEmbed { ident, attrs } = DeriveEmbed::from_ast(&input)?;
-    let DeriveEmbedAttrs {
+    let input = DeriveEmbedFolder::from_ast(&input)?;
+
+    let static_embed = expand_static_embed(&input);
+    let dynamic_embed = expand_dynamic_embed(&input);
+
+    let expanded = quote::quote! {
+        #[cfg(not(debug_assertions))]
+        #static_embed
+
+        #[cfg(debug_assertions)]
+        #dynamic_embed
+    };
+
+    Ok(expanded)
+}
+
+fn expand_static_embed(input: &DeriveEmbedFolder) -> proc_macro2::TokenStream {
+    let DeriveEmbedFolder { ident, attrs } = input;
+    let DeriveEmbedFolderAttrs {
         folder,
         crate_path,
         index,
     } = attrs;
 
-    let root = root_absolute_path(&folder);
-    let embedded_files = get_files(&root, &index).map(|file| {
+    let root = root_absolute_path(folder);
+    let embedded_files = get_files(&root, index).map(|file| {
         let last_modified = tower_embed_core::last_modified(file.absolute_path.as_std_path())
             .ok()
             .and_then(|headers::LastModified(time)| {
@@ -71,63 +88,83 @@ fn expand_derive_embed(input: syn::DeriveInput) -> syn::Result<proc_macro2::Toke
         }
     });
 
-    let root = root.as_str();
-
-    let expanded = quote::quote! {
-        impl #crate_path::Embed for #ident {
-            #[cfg(not(debug_assertions))]
-            fn get(path: &str) -> impl Future<Output = std::io::Result<#crate_path::core::Embedded>> + Send + 'static {
+    quote::quote! {
+        impl #crate_path::core::Embed for #ident {
+            fn forward(
+                req: #crate_path::core::http::Request<()>,
+            ) -> impl Future<Output = #crate_path::core::http::Response<#crate_path::core::Body>> + Send + 'static
+            {
                 use std::{collections::HashMap, sync::LazyLock, path::Path};
-
-                use #crate_path::core::{Content, Embedded, Metadata, headers};
+                use #crate_path::core::{Content, Embedded, EmbeddedExt, Metadata, headers};
 
                 enum Entry {
                     File(&'static [u8], Metadata),
                     Redirect(&'static str),
                 }
 
-                const FILES: LazyLock<HashMap<&'static str, Entry>> = LazyLock::new(|| {
+                static FILES: LazyLock<HashMap<&'static str, Entry>> = LazyLock::new(|| {
                     let mut m = HashMap::new();
                     #(m.extend(#embedded_files);)*
                     m
                 });
 
-                let mut path = path;
+                let mut path = req.uri().path().trim_start_matches('/');
                 let output = loop {
                     match FILES.get(path) {
                         Some(Entry::File(bytes, metadata)) => break Ok(Embedded {
                             content: Content::from_static(bytes),
                             metadata: metadata.clone(),
                         }),
-                        Some(Entry::Redirect(redirect_path)) => {
-                            path = redirect_path;
+                        Some(Entry::Redirect(redirect)) => {
+                            path = redirect;
                         }
-                        None => break Err(std::io::ErrorKind::NotFound.into()),
+                        None => break Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
                     };
                 };
-                std::future::ready(output)
+                std::future::ready(output.into_response(req))
             }
 
-            #[cfg(debug_assertions)]
-            fn get(path: &str) -> impl Future<Output = std::io::Result<#crate_path::core::Embedded>> + Send + 'static {
-                #crate_path::core::serve_file(path.to_string(), #root, #index)
+        }
+    }
+}
+
+fn expand_dynamic_embed(input: &DeriveEmbedFolder) -> proc_macro2::TokenStream {
+    let DeriveEmbedFolder { ident, attrs } = input;
+    let DeriveEmbedFolderAttrs {
+        folder,
+        crate_path,
+        index,
+    } = attrs;
+
+    let root = root_absolute_path(folder);
+    let root = root.as_str();
+
+    quote::quote! {
+        impl #crate_path::core::Embed for #ident {
+            fn forward(
+                req: #crate_path::core::http::Request<()>,
+            ) -> impl Future<Output = #crate_path::core::http::Response<#crate_path::core::Body>> + Send + 'static
+            {
+                let path = req.uri().path().trim_start_matches('/').to_string();
+                async move {
+                    use #crate_path::core::EmbeddedExt;
+                    #crate_path::core::Embedded::load_file(path, #root, #index).await.into_response(req)
+                }
             }
         }
-    };
-
-    Ok(expanded)
+    }
 }
 
 /// A source data annotated with `#[derive(Embed)]``
-struct DeriveEmbed {
+struct DeriveEmbedFolder {
     /// The struct name
     ident: syn::Ident,
     /// Attributes of structure
-    attrs: DeriveEmbedAttrs,
+    attrs: DeriveEmbedFolderAttrs,
 }
 
 /// Attributes for `Embed` derive macro.
-struct DeriveEmbedAttrs {
+struct DeriveEmbedFolderAttrs {
     /// The folder to embed
     folder: String,
     /// The path to the crate `tower_embed`
@@ -136,7 +173,7 @@ struct DeriveEmbedAttrs {
     index: Cow<'static, str>,
 }
 
-impl DeriveEmbed {
+impl DeriveEmbedFolder {
     fn from_ast(input: &syn::DeriveInput) -> syn::Result<Self> {
         let syn::Data::Struct(data) = &input.data else {
             return Err(syn::Error::new_spanned(
@@ -153,13 +190,13 @@ impl DeriveEmbed {
         }
 
         let ident = input.ident.clone();
-        let attrs = DeriveEmbedAttrs::from_ast(input)?;
+        let attrs = DeriveEmbedFolderAttrs::from_ast(input)?;
 
         Ok(Self { ident, attrs })
     }
 }
 
-impl DeriveEmbedAttrs {
+impl DeriveEmbedFolderAttrs {
     fn from_ast(input: &syn::DeriveInput) -> syn::Result<Self> {
         let mut folder = None;
         let mut crate_path = None;
@@ -189,7 +226,7 @@ impl DeriveEmbedAttrs {
                     let name = meta.path.to_token_stream();
                     return Err(syn::Error::new_spanned(
                         meta.path,
-                        format_args!("unknown `embed` attribute for `{}`", name),
+                        format_args!("unknown `{}` attribute for `embed`", name),
                     ));
                 }
                 Ok(())

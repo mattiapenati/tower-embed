@@ -20,17 +20,15 @@ this mode.
 
 ```rust
 use axum::Router;
-use tower_embed::{Embed, EmbedExt, ServeEmbed};
+use tower_embed::{EmbedExt, EmbedFolder, ServeEmbed};
 
-#[derive(Embed)]
+#[derive(EmbedFolder)]
 #[embed(folder = "assets")]
 struct Assets;
 
 #[tokio::main]
 async fn main() {
-    let assets = ServeEmbed::builder()
-        .not_found_service(Assets::not_found_page("404.html"))
-        .build::<Assets>();
+    let assets = ServeEmbed::<Assets>::new().with_not_found(Assets::not_found_page("404.html"));
     let router = Router::new().fallback_service(assets);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
