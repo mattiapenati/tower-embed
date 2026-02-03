@@ -1,6 +1,7 @@
 //! HTTP body types for requests and responses.
 
 use std::{
+    convert::Infallible,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -63,5 +64,28 @@ impl http_body::Body for Body {
 
     fn size_hint(&self) -> http_body::SizeHint {
         self.0.size_hint()
+    }
+}
+
+/// Response future used in this crate.
+pub struct ResponseFuture(ResponseFutureInner);
+
+type ResponseFutureInner =
+    Pin<Box<dyn Future<Output = Result<http::Response<Body>, Infallible>> + Send>>;
+
+impl ResponseFuture {
+    pub fn new<F>(future: F) -> Self
+    where
+        F: Future<Output = Result<http::Response<Body>, Infallible>> + Send + 'static,
+    {
+        ResponseFuture(Box::pin(future))
+    }
+}
+
+impl Future for ResponseFuture {
+    type Output = Result<http::Response<Body>, Infallible>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.0.as_mut().poll(cx)
     }
 }
