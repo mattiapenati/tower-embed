@@ -9,9 +9,32 @@ use crate::{Body, BoxError, response};
 
 /// Builds the Astro project and the return the folder containing generated files.
 pub fn build_project(root: &Path) -> std::io::Result<PathBuf> {
-    let pm = PackageManager::from_project_folder(root)
-        .ok_or_else(|| std::io::Error::other("Failed to detect package manager"))?;
+    let pm = PackageManager::from_project_folder(root);
     pm.build(root)
+}
+
+/// Sync the prohect with the lock file of the detected package manager.
+pub fn sync(root: &Path) -> std::io::Result<()> {
+    use std::process::Command;
+
+    let pm = PackageManager::from_project_folder(root);
+    let mut cmd = match pm {
+        PackageManager::Npm => Command::new("npm"),
+        PackageManager::Yarn => Command::new("yarn"),
+        PackageManager::Pnpm => Command::new("pnpm"),
+        PackageManager::Deno => Command::new("deno"),
+    };
+    cmd.arg("install");
+    if let PackageManager::Deno = pm {
+        cmd.arg("--allow-scripts");
+    }
+
+    cmd.current_dir(root)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()?
+        .wait()?;
+    Ok(())
 }
 
 /// Package managers supported by Astro projects.
@@ -25,22 +48,22 @@ enum PackageManager {
 
 impl PackageManager {
     /// Detects the package manager used in the given project folder using the existing lock file.
-    fn from_project_folder(project: &Path) -> Option<Self> {
+    fn from_project_folder(project: &Path) -> Self {
         const DENO_LOCK: &str = "deno.lock";
         const YARN_LOCK: &str = "yarn.lock";
         const PNPM_LOCK: &str = "pnpm-lock.yaml";
         const NPM_LOCK: &str = "package-lock.json";
 
         if project.join(DENO_LOCK).exists() {
-            Some(PackageManager::Deno)
+            PackageManager::Deno
         } else if project.join(YARN_LOCK).exists() {
-            Some(PackageManager::Yarn)
+            PackageManager::Yarn
         } else if project.join(PNPM_LOCK).exists() {
-            Some(PackageManager::Pnpm)
+            PackageManager::Pnpm
         } else if project.join(NPM_LOCK).exists() {
-            Some(PackageManager::Npm)
+            PackageManager::Npm
         } else {
-            None
+            panic!("Failed to detect package manager");
         }
     }
 
@@ -159,8 +182,7 @@ pub struct AstroProxy {
 impl AstroProxy {
     /// Creates a new `AstroProxy` by starting the Astro dev server in the given project root.
     pub fn new(root: &Path) -> std::io::Result<Self> {
-        let pm = PackageManager::from_project_folder(root)
-            .ok_or_else(|| std::io::Error::other("Failed to detect package manager"))?;
+        let pm = PackageManager::from_project_folder(root);
         let port = pm.dev(root)?;
 
         let pool = bb8::Pool::builder().build_unchecked(PoolManager { port: port.port() });
