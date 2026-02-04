@@ -59,7 +59,8 @@ fn expand_static_embed(input: &DeriveEmbedFolder) -> syn::Result<proc_macro2::To
 
     #[cfg(feature = "astro")]
     let root = if attrs.astro {
-        tower_embed_core::astro::build_project(root.as_std_path())
+        tower_embed_core::astro::sync(root.as_std_path())
+            .and_then(|_| tower_embed_core::astro::build_project(root.as_std_path()))
             .map_err(|err| {
                 syn::Error::new_spanned(ident, format!("Failed to build Astro project: {err}"))
             })?
