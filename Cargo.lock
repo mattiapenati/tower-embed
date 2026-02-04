@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "tower-embed"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "tower-embed-core",
  "tower-embed-impl",
@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "tower-embed-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bb8",
  "bytes",
@@ -650,7 +650,7 @@ dependencies = [
 
 [[package]]
 name = "tower-embed-impl"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "camino",
  "proc-macro2",

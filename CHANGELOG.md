@@ -1,4 +1,4 @@
-## v0.5.0 \[UNRELEASED\]
+## v0.5.0
 
 - embed [Astro] projects as static assets
 
