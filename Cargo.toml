@@ -2,7 +2,7 @@
 members = [".", "crates/*", "examples/*"]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Mattia Penati <mattia.penati@protonmail.com>"]
 edition = "2024"
 license = "Apache-2.0 OR MIT"
@@ -28,8 +28,8 @@ license.workspace = true
 autoexamples = false
 
 [dependencies]
-tower-embed-core = { path = "crates/tower-embed-core", version = "0.4.0" }
-tower-embed-impl = { path = "crates/tower-embed-impl", version = "0.4.0" }
+tower-embed-core = { path = "crates/tower-embed-core", version = "0.5.0" }
+tower-embed-impl = { path = "crates/tower-embed-impl", version = "0.5.0" }
 
 [features]
 default = ["tokio"]
