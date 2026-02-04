@@ -14,6 +14,8 @@ mod body;
 mod embedded;
 mod service;
 
+#[cfg(feature = "astro")]
+pub mod astro;
 pub mod headers;
 pub mod response;
 
