@@ -11,7 +11,7 @@ repository.workspace = true
 
 [dependencies]
 bb8 = { version = "0.9.1", optional = true }
-bytes = "1.11.0"
+bytes = "1.11.1"
 futures-core = "0.3.31"
 http = "1.4.0"
 http-body = "1.0.1"
@@ -29,7 +29,6 @@ tokio = { version = "1.49.0", optional = true, features = [
 ] }
 tokio-util = { version = "0.7.18", optional = true, features = ["io"] }
 tower = { version = "0.5.3", features = ["util"] }
-tracing = "0.1.44"
 
 [features]
 default = ["tokio"]
