@@ -38,7 +38,7 @@ impl Body {
         Body::new(http_body_util::StreamBody::new(stream))
     }
 
-    fn new<B>(body: B) -> Self
+    pub(crate) fn new<B>(body: B) -> Self
     where
         B: http_body::Body<Data = Bytes> + Send + 'static,
         B::Error: Into<BoxError>,

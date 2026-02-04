@@ -17,3 +17,7 @@ quote = "1.0.44"
 syn = "2.0.114"
 tower-embed-core = { path = "../tower-embed-core", version = "0.4.0" }
 walkdir = "2.5.0"
+
+[features]
+default = []
+astro = ["tower-embed-core/astro"]

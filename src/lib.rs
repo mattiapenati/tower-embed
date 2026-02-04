@@ -10,7 +10,15 @@
 //! In `debug` mode, assets are served directly from the filesystem to facilitate rapid
 //! development. Both `ETag` and `Last-Modified` headers are not generated in this mode.
 //!
-//! # Usage
+//! The optional feature `astro` can be used to enable support for embedding [Astro] project. In
+//! release mode the project is build and embedded as static assets, while in debug mode the
+//! service acts as a proxy server pointing to the development server.
+//!
+//! ## Features
+//!
+//! * **astro** - Enable support for [Astro] projects.
+//!
+//! ## Usage
 //!
 //! ```no_run
 //! use axum::Router;
@@ -36,6 +44,7 @@
 //!
 //! [`tower`]: https://crates.io/crates/tower
 //! [examples]: https://github.com/mattiapenati/tower-embed/tree/main/examples
+//! [Astro]: https://astro.build/
 
 #[cfg(not(feature = "tokio"))]
 compile_error!("Only tokio runtime is supported, and it is required to use `tower-embed`.");

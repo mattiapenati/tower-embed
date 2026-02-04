@@ -33,4 +33,5 @@ tower-embed-impl = { path = "crates/tower-embed-impl", version = "0.4.0" }
 
 [features]
 default = ["tokio"]
+astro = ["tower-embed-core/astro", "tower-embed-impl/astro"]
 tokio = ["tower-embed-core/tokio"]

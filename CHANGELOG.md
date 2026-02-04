@@ -1,5 +1,7 @@
 ## v0.5.0 \[UNRELEASED\]
 
+- embed [Astro] projects as static assets
+
 ## v0.4.0
 
 - add custom index file support
@@ -17,6 +19,7 @@
 
 - removed [`headers`] dependency
 
+[Astro]: https://astro.build/
 [`headers`]: https://crates.io/crates/headers
 [`rapidhash`]: https://crates.io/crates/rapidhash
 [`rust-embed`]: https://crates.io/crates/rust-embed
