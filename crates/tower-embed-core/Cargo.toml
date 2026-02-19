@@ -21,7 +21,7 @@ hyper = { version = "1.8.1", features = ["client", "http1"], optional = true }
 hyper-util = { version = "0.1.20", optional = true, features = ["tokio"] }
 mime = "0.3.17"
 mime_guess = "2.0.5"
-rapidhash = "4.2.1"
+rapidhash = "4.4.0"
 tokio = { version = "1.49.0", optional = true, features = [
   "fs",
   "io-util",
