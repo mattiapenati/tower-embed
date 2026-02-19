@@ -12,7 +12,7 @@ repository.workspace = true
 [dependencies]
 bb8 = { version = "0.9.1", optional = true }
 bytes = "1.11.1"
-futures-core = "0.3.31"
+futures-core = "0.3.32"
 http = "1.4.0"
 http-body = "1.0.1"
 http-body-util = "0.1.3"
