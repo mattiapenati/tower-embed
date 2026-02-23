@@ -111,9 +111,6 @@ name = "example-astro"
 version = "0.1.0"
 dependencies = [
  "axum",
- "proc-macro2",
- "quote",
- "syn",
  "tokio",
  "tower-embed",
 ]
@@ -123,9 +120,6 @@ name = "example-axum"
 version = "0.1.0"
 dependencies = [
  "axum",
- "proc-macro2",
- "quote",
- "syn",
  "tokio",
  "tower-embed",
 ]
@@ -135,9 +129,6 @@ name = "example-custom-404"
 version = "0.1.0"
 dependencies = [
  "axum",
- "proc-macro2",
- "quote",
- "syn",
  "tokio",
  "tower-embed",
 ]
@@ -411,9 +402,9 @@ dependencies = [
 
 [[package]]
 name = "rapidhash"
-version = "4.4.0"
+version = "4.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "111325c42c4bafae99e777cd77b40dea9a2b30c69e9d8c74b6eccd7fba4337de"
+checksum = "b5e48930979c155e2f33aa36ab3119b5ee81332beb6482199a8ecd6029b80b59"
 dependencies = [
  "rustversion",
 ]
@@ -553,9 +544,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.116"
+version = "2.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3df424c70518695237746f84cede799c9c58fcb37450d7b23716568cc8bc69cb"
+checksum = "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
 dependencies = [
  "proc-macro2",
  "quote",
